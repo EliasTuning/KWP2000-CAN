@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kwp2000-can"
+version = "0.1.0"
+description = "Python library for KWP2000 (Keyword Protocol 2000) communication over CAN bus using TP20 transport protocol and J2534 interface"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "Elias", email = ""}
+]
+keywords = [
+    "kwp2000",
+    "automotive",
+    "diagnostics",
+    "can",
+    "tp20",
+    "j2534",
+    "ecu",
+    "obd",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Hardware",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "python-can>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/KWP2000-CAN"
+Documentation = "https://github.com/yourusername/KWP2000-CAN#readme"
+Repository = "https://github.com/yourusername/KWP2000-CAN"
+Issues = "https://github.com/yourusername/KWP2000-CAN/issues"
+
+[tool.setuptools]
+packages = ["kwp2000", "tp20", "j2534"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+

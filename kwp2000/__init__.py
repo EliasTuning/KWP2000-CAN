@@ -28,6 +28,13 @@ __all__ = [
     'exceptions',
 ]
 
+# Optional convenience wrapper for J2534+TP20+KWP2000
+try:
+    from kwp2000.can import KWP2000_TP20_J2534
+    __all__.append('KWP2000_TP20_J2534')
+except ImportError:
+    pass  # J2534/TP20 dependencies not available
+
 # Optional import for J2534 support (may fail if j2534 package not available)
 try:
     from kwp2000.j2534_tp20 import J2534TP20Client
