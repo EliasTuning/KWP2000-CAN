@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.7"
 license = {text = "MIT"}
 authors = [
-    {name = "Elias", email = ""}
+    {name = "Elias", email = "elias.kotlyar@gmail.com"}
 ]
 keywords = [
     "kwp2000",
