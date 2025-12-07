@@ -21,6 +21,8 @@ from tp20.constants import (
     DATA_OP_ACK_NOT_READY,
     SEQ_MASK,
     OPCODE_CHANNEL_TEST,
+    OPCODE_BREAK,
+    OPCODE_DISCONNECT,
 )
 from tp20.frames import (
     build_setup_request,
@@ -464,6 +466,42 @@ class TP20Transport(Transport):
             pass
         return self.can_connection.recv_can_frame(timeout=timeout)
 
+    def _format_frame(self, can_id: int, data: bytes) -> str:
+        """Return a human-readable description of a received CAN frame."""
+        prefix = f"ID 0x{can_id:03X}"
+
+        if not data:
+            return f"{prefix}: <empty>"
+
+        # Single-byte control frames
+        control_map = {
+            OPCODE_CHANNEL_TEST: "CHANNEL_TEST (A3)",
+            OPCODE_BREAK: "BREAK (A4)",
+            OPCODE_DISCONNECT: "DISCONNECT (A8)",
+        }
+        if len(data) == 1:
+            opcode = data[0]
+            name = control_map.get(opcode, None)
+            if name:
+                return f"{prefix}: {name}"
+            return f"{prefix}: single=0x{opcode:02X}"
+
+        try:
+            opcode, seq, payload = parse_data_frame(data)
+            opcode_names = {
+                DATA_OP_WAIT_ACK_MORE: "DATA WAIT_ACK_MORE",
+                DATA_OP_WAIT_ACK_LAST: "DATA WAIT_ACK_LAST",
+                DATA_OP_NO_ACK_MORE: "DATA NO_ACK_MORE",
+                DATA_OP_NO_ACK_LAST: "DATA NO_ACK_LAST",
+                DATA_OP_ACK_READY: "ACK READY",
+                DATA_OP_ACK_NOT_READY: "ACK NOT_READY",
+            }
+            opcode_label = opcode_names.get(opcode, f"OP 0x{opcode:X}")
+            payload_hex = payload.hex() if payload else "-"
+            return f"{prefix}: {opcode_label}, seq={seq}, payload={payload_hex}"
+        except Exception:
+            return f"{prefix}: raw={data.hex()}"
+
     def _reset_state(self) -> None:
         """Reset channel and buffer state."""
         self._channel_setup = False
@@ -659,7 +697,7 @@ class TP20Transport(Transport):
             if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
                 # Ignore keep-alive echoes
                 continue
-            frames_received.append((can_id, data.hex()))
+            frames_received.append((can_id, data))
             try:
                 if len(data) == 1 and data[0] == 0xA8:
                     raise TP20DisconnectedException("Received A8")
@@ -681,7 +719,16 @@ class TP20Transport(Transport):
         # Log what we received before timeout
         import logging
         logger = logging.getLogger()
-        logger.warning(f"Timeout waiting for ACK sequence {sequence}. Expected CAN ID: 0x{self._rx_can_id:03X}. Received frames: {frames_received}")
+        formatted_frames = "\n".join(
+            self._format_frame(cid, fdata) for cid, fdata in frames_received
+        ) or "<none>"
+        logger.warning(
+            "Timeout waiting for ACK sequence %s. Expected CAN ID: 0x%03X. "
+            "Received frames:\n%s",
+            sequence,
+            self._rx_can_id,
+            formatted_frames,
+        )
         raise TP20TimeoutException(f"Timeout waiting for ACK for sequence {sequence}")
     
     def _disconnect_channel(self) -> None:
