@@ -20,6 +20,7 @@ from tp20.constants import (
     DATA_OP_ACK_READY,
     DATA_OP_ACK_NOT_READY,
     SEQ_MASK,
+    OPCODE_CHANNEL_TEST,
 )
 from tp20.frames import (
     build_setup_request,
@@ -86,6 +87,7 @@ class TP20Transport(Transport):
         t1: int = 0x8A,
         t3: int = 0x32,
         timeout: float = 1.0,
+        keepalive_interval_ms: float = 10.0,
     ):
         """
         Initialize TP20 transport.
@@ -99,6 +101,7 @@ class TP20Transport(Transport):
             t1: Timing parameter 1 (default: 0x8A)
             t3: Timing parameter 3 (default: 0x32)
             timeout: Default timeout in seconds
+            keepalive_interval_ms: Interval for channel test (A3) frames (default: 10 ms)
         """
         self.can_connection = can_connection
         self.dest = dest
@@ -108,6 +111,7 @@ class TP20Transport(Transport):
         self.t1 = t1
         self.t3 = t3
         self.timeout = timeout
+        self.keepalive_interval_ms = keepalive_interval_ms
         
         # Channel state
         self._is_open = False
@@ -133,6 +137,8 @@ class TP20Transport(Transport):
         self._response_queue: queue.Queue[_Response] = queue.Queue()
         self._rx_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
+        self._keepalive_stop_event = threading.Event()
+        self._keepalive_thread: Optional[threading.Thread] = None
         self._worker_thread: Optional[threading.Thread] = None
         
     def open(self) -> None:
@@ -224,6 +230,41 @@ class TP20Transport(Transport):
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker_thread.start()
 
+    def _start_keepalive(self) -> None:
+        """Start the keep-alive (A3) sender if enabled."""
+        if self.keepalive_interval_ms <= 0:
+            return
+        if self._keepalive_thread and self._keepalive_thread.is_alive():
+            return
+        self._keepalive_stop_event.clear()
+        self._keepalive_thread = threading.Thread(
+            target=self._keepalive_loop, daemon=True
+        )
+        self._keepalive_thread.start()
+
+    def _stop_keepalive(self) -> None:
+        """Stop the keep-alive sender."""
+        self._keepalive_stop_event.set()
+        if self._keepalive_thread and self._keepalive_thread.is_alive():
+            self._keepalive_thread.join(timeout=1.0)
+        self._keepalive_thread = None
+
+    def _keepalive_loop(self) -> None:
+        """Periodically send channel test (A3) frames while the channel is active."""
+        interval = self.keepalive_interval_ms / 1000.0
+        while not self._keepalive_stop_event.wait(interval):
+            if not self._is_open or not self._channel_setup:
+                continue
+            if self._tx_can_id is None:
+                continue
+            try:
+                self.can_connection.send_can_frame(
+                    self._tx_can_id, build_channel_test()
+                )
+            except Exception:
+                # Ignore keep-alive send errors to avoid stopping the loop
+                continue
+
     def _submit_command(
         self,
         cmd_type: _CommandType,
@@ -291,6 +332,7 @@ class TP20Transport(Transport):
         try:
             self._setup_channel()
             self._negotiate_parameters()
+            self._start_keepalive()
         except Exception as exc:
             self._do_close()
             raise TP20Exception(f"Failed to open TP20 channel: {exc}") from exc
@@ -307,6 +349,8 @@ class TP20Transport(Transport):
             except Exception:
                 # Ignore errors during disconnect to ensure closure
                 pass
+
+        self._stop_keepalive()
 
         try:
             self.can_connection.close()
@@ -351,6 +395,9 @@ class TP20Transport(Transport):
             if can_id != self._rx_can_id:
                 continue
 
+            if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
+                # Internal keep-alive, do not surface
+                continue
             if len(data) == 1 and data[0] == 0xA8:
                 raise TP20DisconnectedException("Received A8")
 
@@ -433,6 +480,8 @@ class TP20Transport(Transport):
         self._receive_sequence = None
         self._send_sequence = 0
         self._clear_queue(self._rx_queue)
+        self._keepalive_stop_event.set()
+        self._keepalive_thread = None
 
     @staticmethod
     def _clear_queue(target_queue: queue.Queue) -> None:
@@ -606,6 +655,9 @@ class TP20Transport(Transport):
                 import logging
                 logger = logging.getLogger()
                 logger.debug(f"Received frame on unexpected CAN ID: 0x{can_id:03X} (expected 0x{self._rx_can_id:03X}), data: {data.hex()}")
+                continue
+            if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
+                # Ignore keep-alive echoes
                 continue
             frames_received.append((can_id, data.hex()))
             try:
