@@ -1,0 +1,7 @@
+CAN ID,Data Bytes,Type,Description,Sender
+200,01 C0 00 10 00 03 01,Chan setup,Initiate channel setup with ECU module request it use CAN ID 0x300,tester
+201,00 D0 00 03 40 07 01,Chan setup,ECU module replies says to use CAN ID 0x740,ecu
+740,A0 0F 8A FF 32 FF,Chan param,Tell ECU module to send 16 packets at a time and set timing parameters,tester
+300,A1 0F 8A FF 4A FF,Chan param,ECU module responds with its parameters,ecu
+740,10 00 02 10 89,Data,Last packet expecting ACK. Length is 2 bytes. Send KWP2000 startDiagnosticSession request 0x10 with 0x89 as a parameter,tester
+300,A8,End transmission param,Tester sends disconnect,ecu
