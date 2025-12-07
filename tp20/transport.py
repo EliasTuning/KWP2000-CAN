@@ -2,6 +2,7 @@
 
 import time
 from typing import Optional
+from kwp2000.transport import Transport
 from tp20.can_connection import CanConnection
 from tp20.constants import (
     CAN_ID_SETUP_REQUEST,
@@ -34,7 +35,7 @@ from tp20.exceptions import (
 )
 
 
-class TP20Transport:
+class TP20Transport(Transport):
     """
     TP20 transport layer that wraps a CAN connection.
     
