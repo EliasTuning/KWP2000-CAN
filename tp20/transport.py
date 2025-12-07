@@ -1,6 +1,10 @@
 """TP20 transport layer for sending and receiving byte data over CAN."""
 
+import queue
+import threading
 import time
+from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Optional
 from kwp2000.transport import Transport
 from tp20.can_connection import CanConnection
@@ -28,11 +32,33 @@ from tp20.frames import (
     build_channel_test,
 )
 from tp20.exceptions import (
-    TP20Exception,
-    TP20TimeoutException,
     TP20ChannelException,
     TP20DisconnectedException,
+    TP20Exception,
+    TP20TimeoutException,
 )
+
+
+class _CommandType(Enum):
+    OPEN = auto()
+    CLOSE = auto()
+    SEND = auto()
+    RECV = auto()
+    STOP = auto()
+
+
+@dataclass
+class _Command:
+    cmd_type: _CommandType
+    data: bytes = None
+    timeout: float = None
+
+
+@dataclass
+class _Response:
+    success: bool
+    data: bytes = None
+    exception: Exception = None
 
 
 class TP20Transport(Transport):
@@ -59,7 +85,7 @@ class TP20Transport(Transport):
         block_size: int = 0x0F,
         t1: int = 0x8A,
         t3: int = 0x32,
-        timeout: float = 1.0
+        timeout: float = 1.0,
     ):
         """
         Initialize TP20 transport.
@@ -101,179 +127,87 @@ class TP20Transport(Transport):
         
         # Send sequence number (continues across messages)
         self._send_sequence = 0
+
+        # Threading primitives
+        self._cmd_queue: queue.Queue[_Command] = queue.Queue()
+        self._response_queue: queue.Queue[_Response] = queue.Queue()
+        self._rx_queue: queue.Queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._worker_thread: Optional[threading.Thread] = None
         
     def open(self) -> None:
-        """Open the transport and establish TP20 channel."""
+        """Open the transport and establish TP20 channel via worker thread."""
         if self._is_open:
             return
-        
-        self.can_connection.open()
-        self._is_open = True
-        
-        try:
-            self._setup_channel()
-            self._negotiate_parameters()
-        except Exception as e:
-            self.close()
-            raise TP20Exception(f"Failed to open TP20 channel: {e}") from e
-    
+
+        self._start_worker()
+        self._submit_command(_CommandType.OPEN)
+
     def close(self) -> None:
-        """Close the transport and disconnect TP20 channel."""
-        if not self._is_open:
+        """Close the transport and stop the worker thread."""
+        if not self._worker_thread:
             return
-        
-        if self._channel_setup:
-            try:
-                self._disconnect_channel()
-            except Exception:
-                pass  # Ignore errors during disconnect
-        
-        self.can_connection.close()
-        self._is_open = False
-        self._channel_setup = False
-        self._receive_buffer.clear()
-        self._receive_length = None
-        self._receive_sequence = None
-        self._send_sequence = 0  # Reset send sequence on close
-    
+
+        # Attempt a graceful close first
+        try:
+            self._submit_command(_CommandType.CLOSE)
+        except Exception:
+            # Ignore close errors so we still stop the worker
+            pass
+
+        # Stop the worker thread
+        try:
+            self._submit_command(_CommandType.STOP)
+        finally:
+            if self._worker_thread and self._worker_thread.is_alive():
+                self._worker_thread.join(timeout=1.0)
+            self._worker_thread = None
+
     def send(self, data: bytes) -> None:
         """
         Send byte data over TP20.
-        
+
         Args:
             data: Byte data to send
-            
+
         Raises:
             TP20DisconnectedException: If channel is not set up
             TP20Exception: If send fails
         """
-        if not self._is_open:
-            raise TP20Exception("Transport not open")
-        if not self._channel_setup:
-            raise TP20DisconnectedException("Channel not set up")
-        
-        # Prepend length (2 bytes, big-endian)
-        length = len(data)
-        payload = bytearray()
-        payload.append((length >> 8) & 0xFF)
-        payload.append(length & 0xFF)
-        payload.extend(data)
-        
-        # Segment and send
-        self._send_segmented(payload)
-    
+        if not self._worker_thread:
+            raise TP20Exception("Transport worker not running")
+
+        self._submit_command(_CommandType.SEND, data=data)
+
     def recv(self, timeout: float = 1.0) -> Optional[bytes]:
         """
         Receive byte data over TP20.
-        
+
         Args:
             timeout: Maximum time to wait in seconds
-            
+
         Returns:
             Received byte data, or None if timeout occurs
-            
+
         Raises:
             TP20TimeoutException: If timeout occurs
             TP20Exception: If receive fails
         """
-        if not self._is_open:
-            raise TP20Exception("Transport not open")
-        if not self._channel_setup:
-            raise TP20DisconnectedException("Channel not set up")
-        
-        start_time = time.time()
-        self._receive_buffer.clear()
-        self._receive_length = None
-        self._receive_sequence = None
-        
-        while True:
-            elapsed = time.time() - start_time
-            if elapsed >= timeout:
-                raise TP20TimeoutException("Timeout waiting for frame")
-            
-            remaining_timeout = timeout - elapsed
-            
-            # Receive CAN frame
-            frame = self.can_connection.recv_can_frame(timeout=remaining_timeout)
-            if frame is None:
-                continue
-            
-            can_id, data = frame
-            
-            # Only process frames on our RX CAN ID
-            if can_id != self._rx_can_id:
-                continue
+        if not self._worker_thread:
+            raise TP20Exception("Transport worker not running")
 
-            if len(data) == 1 and data[0] == 0xA8:
-                raise TP20DisconnectedException("Received A8")
-
-            # Parse TP20 data frame
-            try:
-                opcode, sequence, payload = parse_data_frame(data)
-            except ValueError:
-                continue  # Skip invalid frames
-            
-            # Handle ACK frames
-            if opcode == DATA_OP_ACK_READY or opcode == DATA_OP_ACK_NOT_READY:
-                # We might need to handle these, but for now just continue
-                continue
-            
-            # Handle data frames
-            if opcode in (DATA_OP_WAIT_ACK_MORE, DATA_OP_WAIT_ACK_LAST,
-                          DATA_OP_NO_ACK_MORE, DATA_OP_NO_ACK_LAST):
-                # Check sequence number
-                if self._receive_sequence is not None:
-                    expected_seq = (self._receive_sequence + 1) & SEQ_MASK
-                    if sequence != expected_seq:
-                        # Sequence mismatch, reset
-                        self._receive_buffer.clear()
-                        self._receive_length = None
-                        self._receive_sequence = None
-                
-                # First packet: extract length
-                if self._receive_length is None:
-                    if len(payload) < 2:
-                        continue  # Need at least 2 bytes for length
-                    self._receive_length = (payload[0] << 8) | payload[1]
-                    # Add remaining payload after length bytes
-                    self._receive_buffer.extend(payload[2:])
-                    self._receive_sequence = sequence
-                else:
-                    # Subsequent packet: add all payload
-                    self._receive_buffer.extend(payload)
-                    self._receive_sequence = sequence
-                
-                # Send ACK if needed
-                if opcode in (DATA_OP_WAIT_ACK_MORE, DATA_OP_WAIT_ACK_LAST):
-                    # ACK uses the NEXT sequence number (sequence + 1)
-                    ack_sequence = (sequence + 1) & SEQ_MASK
-                    ack_frame = build_data_frame(DATA_OP_ACK_READY, ack_sequence, b'')
-                    self.can_connection.send_can_frame(self._tx_can_id, ack_frame)
-                
-                # Check if complete
-                if self._receive_length is not None:
-                    # Buffer contains data after length bytes, so compare directly to data length
-                    if len(self._receive_buffer) >= self._receive_length:
-                        # Extract data (first _receive_length bytes from buffer)
-                        received_data = bytes(self._receive_buffer[:self._receive_length])
-                        # Reset for next frame
-                        self._receive_buffer.clear()
-                        self._receive_length = None
-                        self._receive_sequence = None
-                        return received_data
-        
-        return None
+        return self._submit_command(_CommandType.RECV, timeout=timeout)
     
     def wait_frame(self, timeout: float = 1.0) -> Optional[bytes]:
         """
         Wait for and receive a frame (KWP2000 Transport interface compatibility).
-        
+
         This method wraps recv() but returns None on timeout instead of raising an exception,
         making TP20Transport compatible with KWP2000 Transport interface.
-        
+
         Args:
             timeout: Maximum time to wait in seconds
-            
+
         Returns:
             Received byte data, or None if timeout occurs
         """
@@ -281,6 +215,233 @@ class TP20Transport(Transport):
             return self.recv(timeout=timeout)
         except TP20TimeoutException:
             return None
+
+    def _start_worker(self) -> None:
+        """Start the worker thread if it is not already running."""
+        if self._worker_thread and self._worker_thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker_thread.start()
+
+    def _submit_command(
+        self,
+        cmd_type: _CommandType,
+        data: bytes = None,
+        timeout: float = None,
+    ):
+        """Put a command on the queue and wait for the response."""
+        self._cmd_queue.put(_Command(cmd_type, data=data, timeout=timeout))
+        response = self._response_queue.get()
+        if response.exception:
+            raise response.exception
+        return response.data
+
+    def _worker_loop(self) -> None:
+        """Background loop that polls CAN RX and processes commands."""
+        while not self._stop_event.is_set():
+            # Opportunistically poll CAN RX to keep the RX queue warm
+            if self._is_open:
+                try:
+                    frame = self.can_connection.recv_can_frame(timeout=0.01)
+                except Exception:
+                    frame = None
+                if frame is not None:
+                    self._rx_queue.put(frame)
+
+            try:
+                cmd = self._cmd_queue.get(timeout=0.05)
+            except queue.Empty:
+                continue
+
+            response = self._dispatch_command(cmd)
+            self._response_queue.put(response)
+
+            if cmd.cmd_type == _CommandType.STOP:
+                break
+
+    def _dispatch_command(self, cmd: _Command) -> _Response:
+        """Execute a command and capture success/exception."""
+        try:
+            if cmd.cmd_type == _CommandType.OPEN:
+                self._do_open()
+                return _Response(True)
+            if cmd.cmd_type == _CommandType.CLOSE:
+                self._do_close()
+                return _Response(True)
+            if cmd.cmd_type == _CommandType.SEND:
+                self._do_send(cmd.data)
+                return _Response(True)
+            if cmd.cmd_type == _CommandType.RECV:
+                data = self._do_recv(timeout=cmd.timeout or self.timeout)
+                return _Response(True, data=data)
+            if cmd.cmd_type == _CommandType.STOP:
+                self._do_stop()
+                return _Response(True)
+            return _Response(False, exception=TP20Exception("Unknown command"))
+        except Exception as exc:  # pragma: no cover - defensive capture
+            return _Response(False, exception=exc)
+
+    def _do_open(self) -> None:
+        """Open CAN connection and negotiate TP20 channel."""
+        if self._is_open:
+            return
+        self.can_connection.open()
+        self._is_open = True
+        try:
+            self._setup_channel()
+            self._negotiate_parameters()
+        except Exception as exc:
+            self._do_close()
+            raise TP20Exception(f"Failed to open TP20 channel: {exc}") from exc
+
+    def _do_close(self) -> None:
+        """Close TP20 channel and underlying CAN connection."""
+        if not self._is_open:
+            self._reset_state()
+            return
+
+        if self._channel_setup:
+            try:
+                self._disconnect_channel()
+            except Exception:
+                # Ignore errors during disconnect to ensure closure
+                pass
+
+        try:
+            self.can_connection.close()
+        finally:
+            self._reset_state()
+
+    def _do_send(self, data: bytes) -> None:
+        if not self._is_open:
+            raise TP20Exception("Transport not open")
+        if not self._channel_setup:
+            raise TP20DisconnectedException("Channel not set up")
+
+        length = len(data)
+        payload = bytearray()
+        payload.append((length >> 8) & 0xFF)
+        payload.append(length & 0xFF)
+        payload.extend(data)
+        self._send_segmented(payload)
+
+    def _do_recv(self, timeout: float) -> Optional[bytes]:
+        if not self._is_open:
+            raise TP20Exception("Transport not open")
+        if not self._channel_setup:
+            raise TP20DisconnectedException("Channel not set up")
+
+        start_time = time.time()
+        self._receive_buffer.clear()
+        self._receive_length = None
+        self._receive_sequence = None
+
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed >= timeout:
+                raise TP20TimeoutException("Timeout waiting for frame")
+
+            remaining_timeout = timeout - elapsed
+            frame = self._next_frame(timeout=remaining_timeout)
+            if frame is None:
+                continue
+
+            can_id, data = frame
+            if can_id != self._rx_can_id:
+                continue
+
+            if len(data) == 1 and data[0] == 0xA8:
+                raise TP20DisconnectedException("Received A8")
+
+            try:
+                opcode, sequence, payload = parse_data_frame(data)
+            except ValueError:
+                continue
+
+            if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY):
+                continue
+
+            if opcode in (
+                DATA_OP_WAIT_ACK_MORE,
+                DATA_OP_WAIT_ACK_LAST,
+                DATA_OP_NO_ACK_MORE,
+                DATA_OP_NO_ACK_LAST,
+            ):
+                if self._receive_sequence is not None:
+                    expected_seq = (self._receive_sequence + 1) & SEQ_MASK
+                    if sequence != expected_seq:
+                        self._receive_buffer.clear()
+                        self._receive_length = None
+                        self._receive_sequence = None
+
+                if self._receive_length is None:
+                    if len(payload) < 2:
+                        continue
+                    self._receive_length = (payload[0] << 8) | payload[1]
+                    self._receive_buffer.extend(payload[2:])
+                    self._receive_sequence = sequence
+                else:
+                    self._receive_buffer.extend(payload)
+                    self._receive_sequence = sequence
+
+                if opcode in (DATA_OP_WAIT_ACK_MORE, DATA_OP_WAIT_ACK_LAST):
+                    ack_sequence = (sequence + 1) & SEQ_MASK
+                    ack_frame = build_data_frame(
+                        DATA_OP_ACK_READY, ack_sequence, b""
+                    )
+                    self.can_connection.send_can_frame(self._tx_can_id, ack_frame)
+
+                if (
+                    self._receive_length is not None
+                    and len(self._receive_buffer) >= self._receive_length
+                ):
+                    received_data = bytes(
+                        self._receive_buffer[: self._receive_length]
+                    )
+                    self._receive_buffer.clear()
+                    self._receive_length = None
+                    self._receive_sequence = None
+                    return received_data
+
+    def _do_stop(self) -> None:
+        """Stop worker loop and close connection."""
+        self._stop_event.set()
+        self._do_close()
+
+    def _next_frame(self, timeout: float) -> Optional[tuple]:
+        """Get next CAN frame, preferring any already queued frames."""
+        try:
+            return self._rx_queue.get_nowait()
+        except queue.Empty:
+            pass
+        return self.can_connection.recv_can_frame(timeout=timeout)
+
+    def _reset_state(self) -> None:
+        """Reset channel and buffer state."""
+        self._channel_setup = False
+        self._is_open = False
+        self._rx_can_id = None
+        self._tx_can_id = None
+        self._remote_rx_id = None
+        self._remote_tx_id = None
+        self._block_size = None
+        self._t1 = None
+        self._t3 = None
+        self._receive_buffer.clear()
+        self._receive_length = None
+        self._receive_sequence = None
+        self._send_sequence = 0
+        self._clear_queue(self._rx_queue)
+
+    @staticmethod
+    def _clear_queue(target_queue: queue.Queue) -> None:
+        """Drain all items from a queue without blocking."""
+        try:
+            while True:
+                target_queue.get_nowait()
+        except queue.Empty:
+            return
     
     def _setup_channel(self) -> None:
         """Setup TP20 channel."""
@@ -303,7 +464,7 @@ class TP20Transport(Transport):
         start_time = time.time()
         
         while time.time() - start_time < self.timeout:
-            frame = self.can_connection.recv_can_frame(timeout=0.1)
+            frame = self._next_frame(timeout=0.1)
             if frame is None:
                 continue
             
@@ -355,7 +516,7 @@ class TP20Transport(Transport):
         start_time = time.time()
         
         while time.time() - start_time < self.timeout:
-            frame = self.can_connection.recv_can_frame(timeout=0.1)
+            frame = self._next_frame(timeout=0.1)
             if frame is None:
                 continue
             
@@ -433,7 +594,7 @@ class TP20Transport(Transport):
         frames_received = []
         
         while time.time() - start_time < self.timeout:
-            frame = self.can_connection.recv_can_frame(timeout=0.1)
+            frame = self._next_frame(timeout=0.1)
             if frame is None:
                 continue
             
@@ -482,7 +643,7 @@ class TP20Transport(Transport):
         # Wait for disconnect response (optional, but good practice)
         start_time = time.time()
         while time.time() - start_time < 0.5:  # Shorter timeout for disconnect
-            frame = self.can_connection.recv_can_frame(timeout=0.1)
+            frame = self._next_frame(timeout=0.1)
             if frame is None:
                 continue
             
