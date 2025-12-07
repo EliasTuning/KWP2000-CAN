@@ -82,7 +82,6 @@ class MockupCan(CanConnection):
     def open(self) -> None:
         """Open the CAN connection and reload messages."""
         self._is_open = True
-        self._load_messages()  # Reload messages for each tests run
     
     def close(self) -> None:
         """Close the CAN connection."""

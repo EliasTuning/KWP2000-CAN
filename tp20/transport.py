@@ -434,7 +434,7 @@ class TP20Transport:
                 continue
             
             can_id, data = frame
-            frames_received.append((can_id, data.hex()))
+
             
             if can_id != self._rx_can_id:
                 # Log unexpected CAN IDs for debugging
@@ -442,8 +442,12 @@ class TP20Transport:
                 logger = logging.getLogger()
                 logger.debug(f"Received frame on unexpected CAN ID: 0x{can_id:03X} (expected 0x{self._rx_can_id:03X}), data: {data.hex()}")
                 continue
-            
+            frames_received.append((can_id, data.hex()))
             try:
+                if len(data) == 1 and data[0] == 0xA8:
+                    raise TP20DisconnectedException("Received A8")
+                    break
+
                 opcode, seq, _ = parse_data_frame(data)
                 # ACK sequence number is the NEXT sequence number (sequence + 1)
                 # So if we sent sequence 0, we expect ACK with sequence 1
