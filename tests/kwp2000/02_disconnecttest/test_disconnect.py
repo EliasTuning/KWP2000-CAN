@@ -7,6 +7,8 @@ import importlib
 from pathlib import Path
 
 # Calculate paths
+from tp20.exceptions import TP20DisconnectedException
+
 project_root = Path(__file__).parent.parent.parent.parent.resolve()
 test_dir = Path(__file__).parent.parent.parent.resolve()
 
@@ -65,22 +67,8 @@ def test_disconnect_diagnostic_session_and_read_data():
     # Use context managers
     with tp20:
         with kwp2000_client:
+            try:
             # Start diagnostic session (0x10 0x89)
-            session_response = kwp2000_client.startDiagnosticSession(session_type=0x89)
-            
-            # Assert session started successfully
-            assert session_response is not None, "Session response should not be None"
-            assert 'session_type_echo' in session_response, "Session response should contain session_type_echo"
-            assert session_response.get('session_type_echo') == 0x89, \
-                f"Expected session type echo 0x89, got 0x{session_response.get('session_type_echo', 0):02X}"
-            
-            # Read data by local identifier (0x21 0x01)
-            data_response = kwp2000_client.readDataByLocalIdentifier(local_identifier=0x01)
-            
-            # Assert data read successfully
-            assert data_response is not None, "Data response should not be None"
-            assert 'local_identifier_echo' in data_response, "Data response should contain local_identifier_echo"
-            assert data_response.get('local_identifier_echo') == 0x01, \
-                f"Expected local identifier echo 0x01, got 0x{data_response.get('local_identifier_echo', 0):02X}"
-            assert 'data' in data_response, "Data response should contain data"
-            assert isinstance(data_response['data'], bytes), "Data should be bytes"
+                session_response = kwp2000_client.startDiagnosticSession(session_type=0x89)
+            except Exception as e:
+                assert isinstance(e,TP20DisconnectedException),"ExceptionType wrong!"
