@@ -1,5 +1,5 @@
 """
-Main test script that simulates a tester sending and receiving CAN messages
+Main tests script that simulates a tester sending and receiving CAN messages
 using the TP20 transport protocol implementation with KWP2000.
 """
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Add test/kwp2000 directory to path for base_test import
+# Add tests/kwp2000 directory to path for base_test import
 kwp2000_test_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(kwp2000_test_dir))
 
@@ -17,7 +17,7 @@ from base_test import simulate_tester_base
 
 
 def test_logic(tp20, kwp2000_client):
-    """Test-specific logic for disconnect test."""
+    """Test-specific logic for normal flow tests."""
     # Start diagnostic session (0x10 0x89)
     print("Starting diagnostic session (0x89)...")
     try:

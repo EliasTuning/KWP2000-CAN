@@ -1,5 +1,5 @@
 """
-Base test class for KWP2000 tests using TP20 transport protocol.
+Base tests class for KWP2000 tests using TP20 transport protocol.
 Provides common setup and initialization functionality.
 """
 import sys
@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from tp20 import TP20Transport
 from kwp2000 import KWP2000Client
 
-# Add test directory to path for mockup_can import
+# Add tests directory to path for mockup_can import
 test_dir = Path(__file__).parent.parent
 if str(test_dir) not in sys.path:
     sys.path.insert(0, str(test_dir))
@@ -26,10 +26,10 @@ class BaseKWP2000Test:
     
     def __init__(self, csv_filename: str, dest: int = 0x01):
         """
-        Initialize the base test.
+        Initialize the base tests.
         
         Args:
-            csv_filename: Path to the CSV file containing CAN messages (relative to test file)
+            csv_filename: Path to the CSV file containing CAN messages (relative to tests file)
             dest: ECU logical address (default: 0x01)
         """
         self.csv_filename = csv_filename
@@ -39,9 +39,9 @@ class BaseKWP2000Test:
         self.kwp2000_client: Optional[KWP2000Client] = None
     
     def setup(self):
-        """Set up the test environment."""
-        # Get the CSV path relative to the calling test file
-        # This assumes the CSV is in the same directory as the test file
+        """Set up the tests environment."""
+        # Get the CSV path relative to the calling tests file
+        # This assumes the CSV is in the same directory as the tests file
         test_file_path = Path(sys._getframe(1).f_globals.get('__file__', ''))
         csv_path = test_file_path.parent / self.csv_filename
         
@@ -61,7 +61,7 @@ class BaseKWP2000Test:
         self.kwp2000_client = KWP2000Client(self.tp20)
     
     def teardown(self):
-        """Clean up test resources."""
+        """Clean up tests resources."""
         if self.kwp2000_client:
             self.kwp2000_client = None
         if self.tp20:
@@ -71,13 +71,13 @@ class BaseKWP2000Test:
     
     def run_test(self):
         """
-        Run the test. Override this method in subclasses to implement test-specific logic.
+        Run the tests. Override this method in subclasses to implement tests-specific logic.
         """
         raise NotImplementedError("Subclasses must implement run_test()")
     
     def execute(self):
         """
-        Execute the test with proper setup and teardown.
+        Execute the tests with proper setup and teardown.
         """
         self.setup()
         
@@ -87,7 +87,7 @@ class BaseKWP2000Test:
                 with self.kwp2000_client as kwp2000_client:
                     print("TP20 channel and KWP2000 client established successfully!\n")
                     
-                    # Run the test-specific logic
+                    # Run the tests-specific logic
                     self.run_test()
                     
                     print("Test completed successfully!")
@@ -102,10 +102,10 @@ def simulate_tester_base(csv_filename: str, dest: int = 0x01, test_logic=None):
     Args:
         csv_filename: Path to the CSV file containing CAN messages (relative to calling file)
         dest: ECU logical address (default: 0x01)
-        test_logic: Optional function to execute test-specific logic. 
+        test_logic: Optional function to execute tests-specific logic.
                    Receives (tp20, kwp2000_client) as arguments.
     """
-    # Get the CSV path relative to the calling test file
+    # Get the CSV path relative to the calling tests file
     test_file_path = Path(sys._getframe(1).f_globals.get('__file__', ''))
     csv_path = test_file_path.parent / csv_filename
     
@@ -126,7 +126,7 @@ def simulate_tester_base(csv_filename: str, dest: int = 0x01, test_logic=None):
         with kwp2000_client as kwp2000_client:
             print("TP20 channel and KWP2000 client established successfully!\n")
             
-            # Execute test-specific logic if provided
+            # Execute tests-specific logic if provided
             if test_logic:
                 test_logic(tp20, kwp2000_client)
             

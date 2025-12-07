@@ -195,7 +195,7 @@ def build_disconnect() -> bytes:
 
 
 def build_channel_test() -> bytes:
-    """Build a channel test (keep-alive) frame."""
+    """Build a channel tests (keep-alive) frame."""
     return bytes([OPCODE_CHANNEL_TEST])
 
 

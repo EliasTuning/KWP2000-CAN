@@ -112,7 +112,7 @@ See the `example/` directory for complete usage examples:
 Run the test suite:
 
 ```bash
-python -m pytest test/
+python -m pytest tests/
 ```
 
 ## Requirements
