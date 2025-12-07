@@ -16,7 +16,8 @@ if __name__ == "__main__":
         # Start extended diagnostic session
         response = client.startDiagnosticSession(session_type=0x89)
         print(f"Session started: {response}")
-        
-        # Read data by local identifier
-        data = client.readDataByLocalIdentifier(local_identifier=0x01)
-        print(f"Data read: {data}")
+
+        while(True):
+            # Read data by local identifier
+            data = client.readDataByLocalIdentifier(local_identifier=0x01)
+            print(f"Data read: {data}")

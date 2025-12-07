@@ -202,7 +202,10 @@ class TP20Transport:
             # Only process frames on our RX CAN ID
             if can_id != self._rx_can_id:
                 continue
-            
+
+            if len(data) == 1 and data[0] == 0xA8:
+                raise TP20DisconnectedException("Received A8")
+
             # Parse TP20 data frame
             try:
                 opcode, sequence, payload = parse_data_frame(data)
