@@ -84,3 +84,4 @@ def test_normal_flow_diagnostic_session_and_read_data():
                 f"Expected local identifier echo 0x01, got 0x{data_response.get('local_identifier_echo', 0):02X}"
             assert 'data' in data_response, "Data response should contain data"
             assert isinstance(data_response['data'], bytes), "Data should be bytes"
+

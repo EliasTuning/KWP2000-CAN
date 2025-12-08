@@ -1,5 +1,5 @@
 """Client class for KWP2000 communication."""
-
+import time
 from typing import Optional
 from kwp2000.transport import Transport
 from kwp2000.request import Request
@@ -324,4 +324,74 @@ class KWP2000Client:
                 - data: The data bytes read
         """
         return self.readDataByLocalIdentifier(local_identifier, timeout)
+    
+    def readMemoryByAddress(
+        self,
+        memory_address: int,
+        memory_size: int,
+        transmission_mode: Optional[int] = None,
+        maximum_number_of_responses_to_send: Optional[int] = None,
+        timeout: float = 1.0
+    ) -> services.ReadMemoryByAddress.ServiceData:
+        """
+        Read memory by address.
+        
+        Args:
+            memory_address: Memory address (24-bit, 3 bytes)
+            memory_size: Number of bytes to read (1 byte)
+            transmission_mode: Optional transmission mode (0x01=single, 0x02=slow, 0x03=medium, 0x04=fast, 0x05=stop)
+            maximum_number_of_responses_to_send: Optional maximum number of responses (only if transmission_mode is provided)
+            timeout: Timeout in seconds
+            
+        Returns:
+            ServiceData with response information containing:
+                - record_values: The memory data read (bytes)
+                - memory_address_echo: Echo of the requested memory address (24-bit)
+            
+        Raises:
+            TimeoutException: If timeout occurs
+            NegativeResponseException: If negative response received
+            ValueError: If response is invalid
+        """
+        request = services.ReadMemoryByAddress.make_request(
+            memory_address=memory_address,
+            memory_size=memory_size,
+            transmission_mode=transmission_mode,
+            maximum_number_of_responses_to_send=maximum_number_of_responses_to_send
+        )
+        response = self.send_request(request, timeout=timeout)
+        return services.ReadMemoryByAddress.interpret_response(response)
+    
+    def readMemoryByAddress2(
+        self,
+        memory_address: int,
+        memory_type: int,
+        memory_size: int,
+        timeout: float = 1.0
+    ) -> services.ReadMemoryByAddress2.ServiceData:
+        """
+        Read memory by address (variant 2 with memory type).
+        
+        Args:
+            memory_address: Memory address (24-bit, 3 bytes)
+            memory_type: Memory type (1 byte)
+            memory_size: Number of bytes to read (1 byte)
+            timeout: Timeout in seconds
+            
+        Returns:
+            ServiceData with response information containing:
+                - record_values: The memory data read (bytes)
+            
+        Raises:
+            TimeoutException: If timeout occurs
+            NegativeResponseException: If negative response received
+            ValueError: If response is invalid
+        """
+        request = services.ReadMemoryByAddress2.make_request(
+            memory_address=memory_address,
+            memory_type=memory_type,
+            memory_size=memory_size
+        )
+        response = self.send_request(request, timeout=timeout)
+        return services.ReadMemoryByAddress2.interpret_response(response)
 

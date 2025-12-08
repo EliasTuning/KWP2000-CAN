@@ -13,6 +13,7 @@ from kwp2000.constants import (
     SERVICE_ROUTINE_CONTROL,
     SERVICE_ECU_RESET,
     SERVICE_READ_DATA_BY_LOCAL_IDENTIFIER,
+    SERVICE_READ_MEMORY_BY_ADDRESS,
 )
 
 
@@ -399,4 +400,176 @@ class ReadDataByLocalIdentifier(ServiceBase):
                 result['data'] = b''
         
         return result
+
+
+class ReadMemoryByAddress(ServiceBase):
+    """ReadMemoryByAddress service (0x23)."""
+    
+    SERVICE_ID = SERVICE_READ_MEMORY_BY_ADDRESS
+    
+    class TransmissionMode:
+        """Transmission mode constants."""
+        single = 0x01
+        slow = 0x02
+        medium = 0x03
+        fast = 0x04
+        stop = 0x05
+    
+    @dataclass
+    class ServiceData:
+        """Parsed service data from response."""
+        record_values: bytes
+        memory_address_echo: int
+    
+    @classmethod
+    def make_request(
+        cls,
+        memory_address: int,
+        memory_size: int,
+        transmission_mode: Optional[int] = None,
+        maximum_number_of_responses_to_send: Optional[int] = None
+    ) -> Request:
+        """
+        Create a ReadMemoryByAddress request.
+        
+        Args:
+            memory_address: Memory address (24-bit, 3 bytes)
+            memory_size: Number of bytes to read (1 byte)
+            transmission_mode: Optional transmission mode (0x01=single, 0x02=slow, 0x03=medium, 0x04=fast, 0x05=stop)
+            maximum_number_of_responses_to_send: Optional maximum number of responses (only if transmission_mode is provided)
+            
+        Returns:
+            Request object
+        """
+        # Extract address bytes (High, Middle, Low)
+        memory_address_high = (memory_address >> 16) & 0xFF
+        memory_address_middle = (memory_address >> 8) & 0xFF
+        memory_address_low = memory_address & 0xFF
+        
+        # Build request data
+        data = bytes([
+            memory_address_high,
+            memory_address_middle,
+            memory_address_low,
+            memory_size & 0xFF
+        ])
+        
+        # Add optional transmission mode
+        if transmission_mode is not None:
+            data += bytes([transmission_mode])
+            # Add optional maximum number of responses to send
+            if maximum_number_of_responses_to_send is not None:
+                data += bytes([maximum_number_of_responses_to_send])
+        
+        return Request(cls.SERVICE_ID, data)
+    
+    @classmethod
+    def interpret_response(cls, response: Response) -> 'ReadMemoryByAddress.ServiceData':
+        """
+        Interpret a ReadMemoryByAddress response.
+        
+        Args:
+            response: Response object
+            
+        Returns:
+            ServiceData with parsed response data containing:
+                - record_values: The memory data read (bytes)
+                - memory_address_echo: Echo of the requested memory address (24-bit)
+            
+        Raises:
+            ValueError: If response data is invalid
+        """
+        if not response.is_positive():
+            raise ValueError("Response is not positive")
+        
+        # Response format:
+        # Bytes 0..n-4: recordValues
+        # Bytes n-3..n-1: memoryAddress echo (High, Middle, Low)
+        if len(response.data) < 3:
+            raise ValueError("Invalid response data length: must be at least 3 bytes")
+        
+        # Extract memory address echo (last 3 bytes)
+        memory_address_high = response.data[-3]
+        memory_address_middle = response.data[-2]
+        memory_address_low = response.data[-1]
+        memory_address_echo = (memory_address_high << 16) | (memory_address_middle << 8) | memory_address_low
+        
+        # Extract record values (all bytes except last 3)
+        record_values = response.data[:-3]
+        
+        return cls.ServiceData(
+            record_values=record_values,
+            memory_address_echo=memory_address_echo
+        )
+
+
+class ReadMemoryByAddress2(ServiceBase):
+    """ReadMemoryByAddress2 service (0x23) - variant with memory type."""
+    
+    SERVICE_ID = SERVICE_READ_MEMORY_BY_ADDRESS
+    
+    @dataclass
+    class ServiceData:
+        """Parsed service data from response."""
+        record_values: bytes
+    
+    @classmethod
+    def make_request(
+        cls,
+        memory_address: int,
+        memory_type: int,
+        memory_size: int
+    ) -> Request:
+        """
+        Create a ReadMemoryByAddress2 request.
+        
+        Args:
+            memory_address: Memory address (24-bit, 3 bytes)
+            memory_type: Memory type (1 byte)
+            memory_size: Number of bytes to read (1 byte)
+            
+        Returns:
+            Request object
+        """
+        # Extract address bytes (High, Middle, Low)
+        memory_address_high = (memory_address >> 16) & 0xFF
+        memory_address_middle = (memory_address >> 8) & 0xFF
+        memory_address_low = memory_address & 0xFF
+        
+        # Build request data
+        data = bytes([
+            memory_address_high,
+            memory_address_middle,
+            memory_address_low,
+            memory_type & 0xFF,
+            memory_size & 0xFF
+        ])
+        
+        return Request(cls.SERVICE_ID, data)
+    
+    @classmethod
+    def interpret_response(cls, response: Response) -> 'ReadMemoryByAddress2.ServiceData':
+        """
+        Interpret a ReadMemoryByAddress2 response.
+        
+        Args:
+            response: Response object
+            
+        Returns:
+            ServiceData with parsed response data containing:
+                - record_values: The memory data read (bytes)
+            
+        Raises:
+            ValueError: If response data is invalid
+        """
+        if not response.is_positive():
+            raise ValueError("Response is not positive")
+        
+        # Response format:
+        # Bytes 0..n-1: recordValues (no address echo)
+        record_values = response.data
+        
+        return cls.ServiceData(
+            record_values=record_values
+        )
 

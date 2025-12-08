@@ -108,6 +108,8 @@ class MockupCan(CanConnection):
         # Check if there are any messages in the stack
         if not self.message_stack:
             raise TP20Exception("No expected message available")
+        if data[0] == 0xA3:
+            return
         
         # Pop the next message from the stack
         expected_msg = self.message_stack.pop(0)
