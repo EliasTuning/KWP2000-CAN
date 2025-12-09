@@ -6,6 +6,7 @@ the comport baudrate accordingly.
 """
 
 import logging
+import time
 from kwp2000.client import KWP2000Client
 from kwp2000_star.transport import KWP2000StarTransport
 from kwp2000.constants import (
@@ -51,7 +52,15 @@ if __name__ == "__main__":
             else:
                 print("✗ Could not identify baudrate, continuing with default 9600 baud")
                 print("  (ECU may require initialization sequence or may not be responding)")
-            
+
+            # Start diagnostic session with maximum baudrate (125k = 0x06)
+            print("\nStarting diagnostic session with maximum baudrate (125k)...")
+            response = client.startDiagnosticSession(
+                diagnostic_mode=0x81,  # OBD2 mode
+                baudrate_identifier=BAUDRATE_115200
+            )
+            transport.set_baudrate(baudrate_identifier_to_value(BAUDRATE_115200))
+
             # Set timing parameters to minimal values for fast communication
             print("\nSetting timing parameters to minimal values...")
             try:
@@ -67,41 +76,39 @@ if __name__ == "__main__":
                     print(f"  - P4min: 0x{tp.p4min:02X}")
             except Exception as e:
                 print(f"  - Warning: Could not set timing parameters: {e}")
-            
-            # Start diagnostic session with maximum baudrate (125k = 0x06)
-            print("\nStarting diagnostic session with maximum baudrate (125k)...")
-            response = client.startDiagnosticSession(
-                diagnostic_mode=0x81,  # OBD2 mode
-                baudrate_identifier=BAUDRATE_115200
-            )
-            
-            print(f"Diagnostic session started:")
-            print(f"  - Diagnostic mode: 0x{response['diagnostic_mode']:02X}")
-            if 'baudrate_identifier' in response:
-                baudrate_id = response['baudrate_identifier']
-                print(f"  - Baudrate identifier: 0x{baudrate_id:02X}")
-                
-                # Change the comport baudrate to match the negotiated baudrate
-                try:
-                    actual_baudrate = baudrate_identifier_to_value(baudrate_id)
-                    print(f"  - Changing comport baudrate to {actual_baudrate}...")
-                    transport.set_baudrate(actual_baudrate)
-                    print(f"  - Comport baudrate changed successfully to {actual_baudrate}")
-                except ValueError as e:
-                    print(f"  - Warning: Could not change baudrate: {e}")
+
+
+
             
             # Example: Read memory by address
-            # Read 4 bytes starting at memory address 0x005b9464
+            # Read 1 byte starting at memory address 0x5B90D8
             mem_addr = 0x5B90D8
-            print(f"\nReading memory at address 0x{mem_addr:08X}, size: 1 byte")
-            result = client.readMemoryByAddress2(
-                memory_address=mem_addr,
-                memory_size=1,
-                memory_type=0
-            )
-            print(f"Record values ({len(result.record_values)} bytes): {result.record_values.hex()}")
-            print(f"Record values (hex): {' '.join(f'{b:02X}' for b in result.record_values)}")
-
+            print(f"\nMeasuring memory request time at address 0x{mem_addr:08X}, size: 1 byte")
+            print("Making 10 attempts...")
+            
+            times = []
+            for attempt in range(10):
+                start_time = time.perf_counter()
+                result = client.readMemoryByAddress2(
+                    memory_address=mem_addr,
+                    memory_size=1,
+                    memory_type=0
+                )
+                end_time = time.perf_counter()
+                elapsed_time = (end_time - start_time) * 1000  # Convert to milliseconds
+                times.append(elapsed_time)
+                print(f"  Attempt {attempt + 1}: {elapsed_time:.2f} ms - Value: {result.record_values.hex()}")
+            
+            # Calculate statistics
+            average_time = sum(times) / len(times)
+            min_time = min(times)
+            max_time = max(times)
+            
+            print(f"\nMemory Request Timing Results:")
+            print(f"  Average time: {average_time:.2f} ms")
+            print(f"  Minimum time: {min_time:.2f} ms")
+            print(f"  Maximum time: {max_time:.2f} ms")
+            print(f"  All times: {', '.join(f'{t:.2f}' for t in times)} ms")
             
             print("\nConnection established. Add your KWP2000 commands here.")
                 

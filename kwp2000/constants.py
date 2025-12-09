@@ -158,8 +158,8 @@ TIMING_PARAMETER_STANDARD = TimingParameters(
     p2min=0x32,  # 25 ms (50 * 0.5)
     p2max=0x02,  # 50 ms (2 * 25)
     p3min=0x6E,  # 55 ms (110 * 0.5)
-    p3max=0x14,  # 5000 ms (20 * 250)
-    p4min=0x0A   # 5 ms (10 * 0.5)
+    p3max=0x1,  # 5000 ms (20 * 250)
+    p4min=0x0   # 5 ms (10 * 0.5)
 )
 
 # StartDiagnosticSession diagnostic modes
