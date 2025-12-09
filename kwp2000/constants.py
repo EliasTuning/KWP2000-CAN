@@ -1,5 +1,7 @@
 """Constants for KWP2000 protocol."""
 
+from dataclasses import dataclass
+
 # Service IDs (Communication Services)
 SERVICE_START_COMMUNICATION = 0x81
 SERVICE_STOP_COMMUNICATION = 0x82
@@ -117,6 +119,30 @@ TIMING_P3MAX_MAX = 0xFF  # 63750 ms (255 * 250)
 TIMING_P4MIN_MIN = 0x00  # 0 ms
 TIMING_P4MIN_MAX = 0xFF  # 127.5 ms (255 * 0.5)
 
+# Standard timing parameters (encoded byte values from ISO 14230-3 examples)
+TIMING_P2MIN_STANDARD = 0x32  # 25 ms (50 * 0.5 ms)
+TIMING_P2MAX_STANDARD = 0x02  # 50 ms (2 * 25 ms)
+TIMING_P3MIN_STANDARD = 0x6E  # 55 ms (110 * 0.5 ms)
+TIMING_P3MAX_STANDARD = 0x14  # 5000 ms (20 * 250 ms)
+TIMING_P4MIN_STANDARD = 0x0A  # 5 ms (10 * 0.5 ms)
+
+# Timing Parameters dataclass
+@dataclass
+class TimingParameters:
+    """Timing parameters structure.
+    
+    According to KWP2000 ISO 14230-3:
+    - P1 = Bytezwischenzeit des Antworttelegramms (0-20ms)
+    - P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
+    - P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
+    - P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
+    """
+    p2min: int  # P2min: Minimum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (0.5 ms units, e.g., 0x32 = 25 ms)
+    p2max: int  # P2max: Maximum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25 ms units, e.g., 0x02 = 50 ms)
+    p3min: int  # P3min: Minimum Zeit zwischen Antworttelegrammende und neuem Request (0.5 ms units, e.g., 0x6E = 55 ms)
+    p3max: int  # P3max: Maximum Zeit zwischen Antworttelegrammende und neuem Request (250 ms units, e.g., 0x14 = 5000 ms)
+    p4min: int  # P4min: Bytezwischenzeit des Requesttelegramms (0.5 ms units, e.g., 0x0A = 5 ms)
+
 # Timing parameter mapping tables
 # According to KWP2000 ISO 14230-3 specification:
 # P1 = Bytezwischenzeit des Antworttelegramms (0-20ms)
@@ -163,22 +189,22 @@ TIMING_PARAMETER_RANGES = {
 }
 
 # Minimal timing parameter values (for fast communication)
-TIMING_PARAMETER_MINIMAL = {
-    'P2min': TIMING_P2MIN_MIN,  # 0x00 = 0 ms
-    'P2max': TIMING_P2MAX_MIN,  # 0x00 = 0 ms
-    'P3min': TIMING_P3MIN_MIN,  # 0x00 = 0 ms
-    'P3max': TIMING_P3MAX_MIN,  # 0x00 = 0 ms
-    'P4min': TIMING_P4MIN_MIN   # 0x00 = 0 ms
-}
+TIMING_PARAMETER_MINIMAL = TimingParameters(
+    p2min=TIMING_P2MIN_MIN,  # 0x00 = 0 ms
+    p2max=TIMING_P2MAX_MIN,  # 0x00 = 0 ms
+    p3min=TIMING_P3MIN_MIN,  # 0x00 = 0 ms
+    p3max=TIMING_P3MAX_MIN,  # 0x00 = 0 ms
+    p4min=TIMING_P4MIN_MIN   # 0x00 = 0 ms
+)
 
 # Standard timing parameter values (from specification example)
-TIMING_PARAMETER_STANDARD = {
-    'P2min': 0x32,  # 25 ms (50 * 0.5)
-    'P2max': 0x02,  # 50 ms (2 * 25)
-    'P3min': 0x6E,  # 55 ms (110 * 0.5)
-    'P3max': 0x14,  # 5000 ms (20 * 250)
-    'P4min': 0x0A   # 5 ms (10 * 0.5)
-}
+TIMING_PARAMETER_STANDARD = TimingParameters(
+    p2min=0x32,  # 25 ms (50 * 0.5)
+    p2max=0x02,  # 50 ms (2 * 25)
+    p3min=0x6E,  # 55 ms (110 * 0.5)
+    p3max=0x14,  # 5000 ms (20 * 250)
+    p4min=0x0A   # 5 ms (10 * 0.5)
+)
 
 # StartDiagnosticSession diagnostic modes
 DIAGNOSTIC_MODE_OBD2 = 0x81  # Standardmodus OBD2-Modus (DT-SD-OBDIIMD)

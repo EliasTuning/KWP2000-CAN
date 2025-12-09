@@ -5,6 +5,7 @@ from kwp2000.transport import Transport
 from kwp2000.request import Request
 from kwp2000.response import Response
 from kwp2000 import services
+from kwp2000.constants import TimingParameters
 from kwp2000.exceptions import TimeoutException, NegativeResponseException
 
 
@@ -279,12 +280,13 @@ class KWP2000Client:
     
     def access_timing_parameter(
         self,
+        timing_parameters: Optional[TimingParameters] = None,
         timing_parameter_id: int = services.AccessTimingParameter.TPI_SP,
-        p2min: int = 0x32,
-        p2max: int = 0x02,
-        p3min: int = 0x6E,
-        p3max: int = 0x14,
-        p4min: int = 0x0A,
+        p2min: Optional[int] = None,
+        p2max: Optional[int] = None,
+        p3min: Optional[int] = None,
+        p3max: Optional[int] = None,
+        p4min: Optional[int] = None,
         timeout: float = 1.0
     ) -> services.AccessTimingParameter.ServiceData:
         """
@@ -304,27 +306,56 @@ class KWP2000Client:
         Note: P1 = Bytezwischenzeit des Antworttelegramms (0-20ms) is not part of this service.
         
         Args:
+            timing_parameters: TimingParameters instance (e.g., TIMING_PARAMETER_STANDARD or TIMING_PARAMETER_MINIMAL).
+                               If provided, individual p2min/p2max/p3min/p3max/p4min parameters are ignored.
             timing_parameter_id: Timing parameter identifier (default: 0x03 = TPI_SP)
             p2min: P2min value - Minimum Zeit zwischen Request und Antworttelegramm (default: 0x32 = 25 ms)
+                   Ignored if timing_parameters is provided.
             p2max: P2max value - Maximum Zeit zwischen Request und Antworttelegramm (default: 0x02 = 50 ms)
+                   Ignored if timing_parameters is provided.
             p3min: P3min value - Minimum Zeit zwischen Antworttelegrammende und neuem Request (default: 0x6E = 55 ms)
+                   Ignored if timing_parameters is provided.
             p3max: P3max value - Maximum Zeit zwischen Antworttelegrammende und neuem Request (default: 0x14 = 5000 ms)
+                   Ignored if timing_parameters is provided.
             p4min: P4min value - Bytezwischenzeit des Requesttelegramms (default: 0x0A = 5 ms)
+                   Ignored if timing_parameters is provided.
             timeout: Timeout in seconds
             
         Returns:
             ServiceData with parsed response data containing:
                 - timing_parameter_id: Echo of the timing parameter identifier
                 - timing_parameters: TimingParameters object with parsed timing values
+        
+        Example:
+            from kwp2000.constants import TIMING_PARAMETER_STANDARD
+            
+            # Using dataclass instance
+            client.access_timing_parameter(TIMING_PARAMETER_STANDARD)
+            
+            # Using individual parameters (backward compatible)
+            client.access_timing_parameter(p2min=0x32, p2max=0x02, ...)
         """
-        request = services.AccessTimingParameter.make_request(
-            timing_parameter_id=timing_parameter_id,
-            p2min=p2min,
-            p2max=p2max,
-            p3min=p3min,
-            p3max=p3max,
-            p4min=p4min
-        )
+        if timing_parameters is not None:
+            # Use TimingParameters instance
+            request = services.AccessTimingParameter.make_request(
+                timing_parameter_id=timing_parameter_id,
+                p2min=timing_parameters.p2min,
+                p2max=timing_parameters.p2max,
+                p3min=timing_parameters.p3min,
+                p3max=timing_parameters.p3max,
+                p4min=timing_parameters.p4min
+            )
+        else:
+            # Use individual parameters with defaults
+            from kwp2000.constants import TIMING_PARAMETER_STANDARD
+            request = services.AccessTimingParameter.make_request(
+                timing_parameter_id=timing_parameter_id,
+                p2min=p2min if p2min is not None else TIMING_PARAMETER_STANDARD.p2min,
+                p2max=p2max if p2max is not None else TIMING_PARAMETER_STANDARD.p2max,
+                p3min=p3min if p3min is not None else TIMING_PARAMETER_STANDARD.p3min,
+                p3max=p3max if p3max is not None else TIMING_PARAMETER_STANDARD.p3max,
+                p4min=p4min if p4min is not None else TIMING_PARAMETER_STANDARD.p4min
+            )
         response = self.send_request(request, timeout=timeout)
         return services.AccessTimingParameter.interpret_response(response)
     

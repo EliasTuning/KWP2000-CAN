@@ -18,6 +18,7 @@ from kwp2000.constants import (
     DIAGNOSTIC_MODE_OBD2,
     DIAGNOSTIC_MODE_ECU_PROGRAMMING,
     DIAGNOSTIC_MODE_ECU_DEVELOPMENT,
+    TimingParameters,
 )
 
 
@@ -302,26 +303,10 @@ class AccessTimingParameter(ServiceBase):
     TPI_SP = 0x03  # Set Parameters
     
     @dataclass
-    class TimingParameters:
-        """Timing parameters structure.
-        
-        According to KWP2000 ISO 14230-3:
-        - P1 = Bytezwischenzeit des Antworttelegramms (0-20ms)
-        - P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
-        - P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
-        - P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
-        """
-        p2min: int  # P2min: Minimum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (0.5 ms units, e.g., 0x32 = 25 ms)
-        p2max: int  # P2max: Maximum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25 ms units, e.g., 0x02 = 50 ms)
-        p3min: int  # P3min: Minimum Zeit zwischen Antworttelegrammende und neuem Request (0.5 ms units, e.g., 0x6E = 55 ms)
-        p3max: int  # P3max: Maximum Zeit zwischen Antworttelegrammende und neuem Request (250 ms units, e.g., 0x14 = 5000 ms)
-        p4min: int  # P4min: Bytezwischenzeit des Requesttelegramms (0.5 ms units, e.g., 0x0A = 5 ms)
-    
-    @dataclass
     class ServiceData:
         """Parsed service data from response."""
         timing_parameter_id: int
-        timing_parameters: Optional['AccessTimingParameter.TimingParameters'] = None
+        timing_parameters: Optional[TimingParameters] = None
     
     @classmethod
     def make_request(
@@ -375,7 +360,7 @@ class AccessTimingParameter(ServiceBase):
     def make_request_with_timing_parameters(
         cls,
         timing_parameter_id: int = TPI_SP,
-        timing_parameters: Optional['AccessTimingParameter.TimingParameters'] = None
+        timing_parameters: Optional[TimingParameters] = None
     ) -> Request:
         """
         Create an AccessTimingParameter request with TimingParameters object.
@@ -388,13 +373,8 @@ class AccessTimingParameter(ServiceBase):
             Request object
         """
         if timing_parameters is None:
-            timing_parameters = cls.TimingParameters(
-                p2min=0x32,
-                p2max=0x02,
-                p3min=0x6E,
-                p3max=0x14,
-                p4min=0x0A
-            )
+            from kwp2000.constants import TIMING_PARAMETER_STANDARD
+            timing_parameters = TIMING_PARAMETER_STANDARD
         
         return cls.make_request(
             timing_parameter_id=timing_parameter_id,
@@ -447,7 +427,7 @@ class AccessTimingParameter(ServiceBase):
         timing_parameter_id = response.data[0]
         
         # Parse timing parameters
-        timing_parameters = cls.TimingParameters(
+        timing_parameters = TimingParameters(
             p2min=response.data[1],
             p2max=response.data[2],
             p3min=response.data[3],

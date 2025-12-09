@@ -56,11 +56,7 @@ if __name__ == "__main__":
             print("\nSetting timing parameters to minimal values...")
             try:
                 timing_response = client.access_timing_parameter(
-                    p2min=TIMING_PARAMETER_MINIMAL['P2min'],
-                    p2max=TIMING_PARAMETER_MINIMAL['P2max'],
-                    p3min=TIMING_PARAMETER_MINIMAL['P3min'],
-                    p3max=TIMING_PARAMETER_MINIMAL['P3max'],
-                    p4min=TIMING_PARAMETER_MINIMAL['P4min']
+                    timing_parameters=TIMING_PARAMETER_MINIMAL
                 )
                 print(f"Timing parameters set successfully:")
                 print(f"  - Timing Parameter ID: 0x{timing_response.timing_parameter_id:02X}")
