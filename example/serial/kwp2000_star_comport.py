@@ -64,10 +64,21 @@ if __name__ == "__main__":
             # Set timing parameters to minimal values for fast communication
             print("\nSetting timing parameters to minimal values...")
             try:
+                # Update transport's access_timings to use minimal values
+                # This affects the wait_frame timeout calculation
+                transport.set_access_timings(TIMING_PARAMETER_MINIMAL)
+                print(f"Transport access timing parameters updated:")
+                tp = TIMING_PARAMETER_MINIMAL
+                print(f"  - P2min: 0x{tp.p2min:02X}, P2max: 0x{tp.p2max:02X}")
+                print(f"  - P3min: 0x{tp.p3min:02X}, P3max: 0x{tp.p3max:02X}")
+                print(f"  - P4min: 0x{tp.p4min:02X}")
+                print(f"  - Calculated wait_frame timeout: {(tp.p2max * 25.0) / 1000.0:.3f} seconds")
+                
+                # Also set timing parameters on the ECU via service
                 timing_response = client.access_timing_parameter(
                     timing_parameters=TIMING_PARAMETER_MINIMAL
                 )
-                print(f"Timing parameters set successfully:")
+                print(f"ECU timing parameters set successfully:")
                 print(f"  - Timing Parameter ID: 0x{timing_response.timing_parameter_id:02X}")
                 if timing_response.timing_parameters:
                     tp = timing_response.timing_parameters

@@ -190,6 +190,25 @@ class KWP2000StarTransport(Transport):
         self._comport_transport.set_baudrate(baudrate)
         self.logger.info(f"Changed KWP2000-STAR transport baudrate to {baudrate}")
     
+    def set_access_timings(self, timing_parameters: TimingParameters) -> None:
+        """
+        Set the access timing parameters used for wait_frame timeout calculation.
+        
+        This method updates the access_timings variable, which is used to calculate
+        the timeout for wait_frame calls. The timeout is calculated from p2max:
+        timeout = (p2max * 25.0) / 1000.0 seconds
+        
+        Args:
+            timing_parameters: TimingParameters instance (e.g., TIMING_PARAMETER_STANDARD or TIMING_PARAMETER_MINIMAL)
+            
+        Example:
+            from kwp2000.constants import TIMING_PARAMETER_MINIMAL
+            
+            transport.set_access_timings(TIMING_PARAMETER_MINIMAL)
+        """
+        self.access_timings = timing_parameters
+        self.logger.info(f"Updated access timing parameters: p2max=0x{timing_parameters.p2max:02X}")
+    
     def identify_baudrate(
         self,
         client,
