@@ -5,6 +5,7 @@ import logging
 from typing import Optional, List
 from kwp2000.transport import Transport
 from kwp2000.exceptions import TransportException, TimeoutException, NegativeResponseException
+from kwp2000.constants import TimingParameters, TIMING_PARAMETER_STANDARD
 from kwp2000_star.frames import build_frame, parse_frame
 from kwp2000_star.exceptions import InvalidChecksumException, InvalidFrameException
 from comport import ComportTransport
@@ -60,6 +61,9 @@ class KWP2000StarTransport(Transport):
             logger: Optional logger instance (default: root logger)
         """
         self.logger = logger if logger is not None else logging.getLogger(__name__)
+        
+        # Access timing parameters (used to set wait_frame timeout)
+        self.access_timings: TimingParameters = TIMING_PARAMETER_STANDARD
         
         # Create underlying COM port transport
         self._comport_transport = ComportTransport(
@@ -130,7 +134,7 @@ class KWP2000StarTransport(Transport):
         the KWP2000 service data (payload).
         
         Args:
-            timeout: Maximum time to wait in seconds
+            timeout: Maximum time to wait in seconds (ignored, timeout is calculated from access_timings)
             
         Returns:
             KWP2000 service data bytes (payload), or None if timeout occurs
@@ -142,8 +146,12 @@ class KWP2000StarTransport(Transport):
             raise TransportException("Transport not open")
         
         try:
+            # Calculate timeout from access_timings.p2max
+            # P2max uses 25 ms resolution, convert to seconds
+            calculated_timeout = (self.access_timings.p2max * 25.0) / 1000.0
+            
             # Receive STAR frame from COM port transport
-            star_frame = self._comport_transport.wait_frame(timeout=timeout)
+            star_frame = self._comport_transport.wait_frame(timeout=calculated_timeout)
             
             if star_frame is None:
                 return None
