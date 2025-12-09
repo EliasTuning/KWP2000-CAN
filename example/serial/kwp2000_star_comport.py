@@ -42,6 +42,16 @@ if __name__ == "__main__":
         with client:
             print(f"Connected to {COM_PORT} at 9600 baud")
             
+            # Identify the working baudrate
+            print("\nIdentifying ECU baudrate...")
+            working_baudrate = transport.identify_baudrate(client, verbose=True)
+            
+            if working_baudrate:
+                print(f"✓ Found working baudrate: {working_baudrate} baud")
+            else:
+                print("✗ Could not identify baudrate, continuing with default 9600 baud")
+                print("  (ECU may require initialization sequence or may not be responding)")
+            
             # Set timing parameters to minimal values for fast communication
             print("\nSetting timing parameters to minimal values...")
             try:

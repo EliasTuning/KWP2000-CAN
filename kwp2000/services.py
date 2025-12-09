@@ -12,6 +12,7 @@ from kwp2000.constants import (
     SERVICE_START_DIAGNOSTIC_SESSION,
     SERVICE_ROUTINE_CONTROL,
     SERVICE_ECU_RESET,
+    SERVICE_TESTER_PRESENT,
     SERVICE_READ_DATA_BY_LOCAL_IDENTIFIER,
     SERVICE_READ_MEMORY_BY_ADDRESS,
     DIAGNOSTIC_MODE_OBD2,
@@ -145,6 +146,74 @@ class ECUReset(ServiceBase):
             result['reset_type_echo'] = response.data[0]
         
         return result
+
+
+class TesterPresent(ServiceBase):
+    """TesterPresent service (0x3E)."""
+    
+    SERVICE_ID = SERVICE_TESTER_PRESENT
+    POSITIVE_RESPONSE_SERVICE_ID = 0x7E  # TPPR (TesterPresent Positive Response)
+    
+    class ResponseRequired:
+        """Response required constants."""
+        YES = 0x01  # Server shall send a response
+        NO = 0x02   # Server shall not send a response
+    
+    @classmethod
+    def make_request(
+        cls,
+        response_required: int = ResponseRequired.YES
+    ) -> Request:
+        """
+        Create a TesterPresent request.
+        
+        According to KWP2000 specification:
+        - Byte #1: Service ID = 0x3E (TP)
+        - Byte #2: responseRequired (0x01 = yes, 0x02 = no)
+        
+        Args:
+            response_required: Response required flag (0x01 = yes, 0x02 = no, default: 0x01)
+            
+        Returns:
+            Request object
+        """
+        if response_required not in (cls.ResponseRequired.YES, cls.ResponseRequired.NO):
+            raise ValueError(
+                f"Invalid response_required value: 0x{response_required:02X}. "
+                f"Must be 0x01 (yes) or 0x02 (no)"
+            )
+        
+        data = bytes([response_required])
+        return Request(cls.SERVICE_ID, data)
+    
+    @classmethod
+    def interpret_response(cls, response: Response) -> dict:
+        """
+        Interpret a TesterPresent response.
+        
+        Positive Response format:
+        - Byte #1: Service ID = 0x7E (TPPR)
+        - No data bytes
+        
+        Negative Response format:
+        - Byte #1: 0x7F (NR)
+        - Byte #2: 0x3E (TesterPresent service ID)
+        - Byte #3: Response code
+        
+        Args:
+            response: Response object
+            
+        Returns:
+            Dictionary with parsed response data (empty for positive response)
+            
+        Raises:
+            ValueError: If response is not positive
+        """
+        if not response.is_positive():
+            raise ValueError("Response is not positive")
+        
+        # Positive response has no data bytes
+        return {}
 
 
 class StartCommunication(ServiceBase):

@@ -218,6 +218,46 @@ class KWP2000Client:
         response = self.send_request(request, timeout=timeout)
         return services.ECUReset.interpret_response(response)
     
+    def tester_present(
+        self,
+        response_required: int = services.TesterPresent.ResponseRequired.YES,
+        timeout: float = 1.0
+    ) -> dict:
+        """
+        Send TesterPresent message to keep the diagnostic session alive.
+        
+        According to KWP2000 specification:
+        - Byte #1: Service ID = 0x3E (TP)
+        - Byte #2: responseRequired (0x01 = yes, 0x02 = no)
+        
+        Positive Response:
+        - Byte #1: Service ID = 0x7E (TPPR)
+        - No data bytes
+        
+        Args:
+            response_required: Response required flag (0x01 = yes, 0x02 = no, default: 0x01)
+            timeout: Timeout in seconds (only used if response_required = YES)
+            
+        Returns:
+            Dictionary with response data (empty for positive response)
+            
+        Raises:
+            TimeoutException: If timeout occurs and response was required
+            NegativeResponseException: If negative response received
+        """
+        request = services.TesterPresent.make_request(response_required=response_required)
+        
+        # If response is not required, send and don't wait
+        if response_required == services.TesterPresent.ResponseRequired.NO:
+            # Just send the request without waiting for response
+            payload = request.get_data()
+            self.transport.send(payload)
+            return {}
+        
+        # If response is required, send and wait for response
+        response = self.send_request(request, timeout=timeout)
+        return services.TesterPresent.interpret_response(response)
+    
     def send_data(
         self,
         data: bytes,

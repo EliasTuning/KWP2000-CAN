@@ -1,9 +1,10 @@
 """Transport layer for KWP2000-STAR protocol over COM port."""
 
+import time
 import logging
-from typing import Optional
+from typing import Optional, List
 from kwp2000.transport import Transport
-from kwp2000.exceptions import TransportException
+from kwp2000.exceptions import TransportException, TimeoutException, NegativeResponseException
 from kwp2000_star.frames import build_frame, parse_frame
 from kwp2000_star.exceptions import InvalidChecksumException, InvalidFrameException
 from comport import ComportTransport
@@ -180,6 +181,135 @@ class KWP2000StarTransport(Transport):
         
         self._comport_transport.set_baudrate(baudrate)
         self.logger.info(f"Changed KWP2000-STAR transport baudrate to {baudrate}")
+    
+    def identify_baudrate(
+        self,
+        client,
+        baudrates: Optional[List[int]] = None,
+        timeout: float = 0.1,
+        verbose: bool = False
+    ) -> Optional[int]:
+        """
+        Identify the working baudrate by scanning through available baudrates.
+        
+        This method loops through available KWP2000 baudrates, sends TesterPresent
+        messages at each baudrate, and returns the first baudrate that receives a response.
+        
+        Args:
+            client: KWP2000Client instance to use for sending TesterPresent messages
+            baudrates: List of baudrates to test (default: common KWP2000 baudrates)
+            timeout: Timeout in seconds for each TesterPresent request (default: 0.1 = 100ms)
+            verbose: If True, print progress messages (default: False)
+            
+        Returns:
+            First working baudrate found, or None if no baudrate responds
+            
+        Raises:
+            TransportException: If transport is not open
+        """
+        if not self._is_open:
+            raise TransportException("Transport not open")
+        
+        # Default baudrates to test (in order of common usage)
+        if baudrates is None:
+            baudrates = [
+                10400,   # 10.4 kbps (common for older ECUs)
+                9600,    # 9.6 kbps (very common)
+                19200,   # 19.2 kbps
+                20800,   # 20.8 kbps
+                38400,   # 38.4 kbps
+                57600,   # 57.6 kbps
+                115200,  # 115.2 kbps
+                125000,  # 125 kbps (high speed)
+            ]
+        
+        if verbose:
+            self.logger.info(f"Starting baudrate identification, testing {len(baudrates)} baudrates...")
+        
+        # Store original baudrate to restore later if no working baudrate is found
+        original_baudrate = self._comport_transport._serial.baudrate
+        found_baudrate = None
+        
+        try:
+            for baudrate in baudrates:
+                try:
+                    if verbose:
+                        self.logger.info(f"Testing {baudrate} baud...")
+                    
+                    # Change to current baudrate
+                    self.set_baudrate(baudrate)
+                    
+                    # Small delay to let the baudrate change settle
+                    time.sleep(0.05)
+                    
+                    # Clear any pending data in the input buffer
+                    if self._comport_transport._serial:
+                        self._comport_transport._serial.reset_input_buffer()
+                    
+                    # Send TesterPresent request with response required
+                    try:
+                        from kwp2000 import services
+                        response = client.tester_present(
+                            response_required=services.TesterPresent.ResponseRequired.YES,
+                            timeout=timeout
+                        )
+                        
+                        # If we get here, we received a response!
+                        if verbose:
+                            self.logger.info(f"Response received at {baudrate} baud")
+                        found_baudrate = baudrate
+                        break  # Found working baudrate, exit loop
+                        
+                    except TimeoutException:
+                        # No response within timeout - continue to next baudrate
+                        if verbose:
+                            self.logger.debug(f"No response at {baudrate} baud")
+                        continue
+                        
+                    except NegativeResponseException:
+                        # Negative response means ECU is there but rejected the request
+                        # This still indicates communication is working
+                        if verbose:
+                            self.logger.info(f"Negative response received at {baudrate} baud (ECU present)")
+                        found_baudrate = baudrate
+                        break  # Found working baudrate, exit loop
+                        
+                    except Exception as e:
+                        # Other errors - log but continue
+                        if verbose:
+                            self.logger.debug(f"Error at {baudrate} baud: {type(e).__name__}")
+                        continue
+                        
+                except TransportException as e:
+                    if verbose:
+                        self.logger.warning(f"Transport error at {baudrate} baud: {e}")
+                    continue
+                except Exception as e:
+                    if verbose:
+                        self.logger.warning(f"Unexpected error at {baudrate} baud: {type(e).__name__}: {e}")
+                    continue
+            
+            # Return found baudrate (or None if none found)
+            if found_baudrate is None:
+                if verbose:
+                    self.logger.warning("No working baudrate found")
+                # Restore original baudrate if no working baudrate was found
+                try:
+                    if self._comport_transport._serial.baudrate != original_baudrate:
+                        self.set_baudrate(original_baudrate)
+                except Exception:
+                    pass
+            
+            return found_baudrate
+            
+        except Exception as e:
+            # On any unexpected error, try to restore original baudrate
+            try:
+                if self._comport_transport._serial.baudrate != original_baudrate:
+                    self.set_baudrate(original_baudrate)
+            except Exception:
+                pass
+            raise
     
     def __enter__(self):
         """Context manager entry."""
