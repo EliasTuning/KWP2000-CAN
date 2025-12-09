@@ -162,6 +162,25 @@ class KWP2000StarTransport(Transport):
         except Exception as e:
             raise TransportException(f"Failed to receive STAR frame: {e}") from e
     
+    def set_baudrate(self, baudrate: int) -> None:
+        """
+        Change the baudrate of the underlying COM port connection.
+        
+        This method can be called while the transport is open to dynamically change
+        the baudrate. The transport connection must be open.
+        
+        Args:
+            baudrate: New baudrate value
+            
+        Raises:
+            TransportException: If transport is not open or baudrate change fails
+        """
+        if not self._is_open:
+            raise TransportException("Transport not open")
+        
+        self._comport_transport.set_baudrate(baudrate)
+        self.logger.info(f"Changed KWP2000-STAR transport baudrate to {baudrate}")
+    
     def __enter__(self):
         """Context manager entry."""
         self.open()

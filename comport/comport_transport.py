@@ -169,6 +169,30 @@ class ComportTransport(Transport):
             # Restore original timeout
             self._serial.timeout = original_timeout
     
+    def set_baudrate(self, baudrate: int) -> None:
+        """
+        Change the baudrate of the serial port connection.
+        
+        This method can be called while the port is open to dynamically change
+        the baudrate. The serial port connection must be open.
+        
+        Args:
+            baudrate: New baudrate value
+            
+        Raises:
+            TransportException: If transport is not open or baudrate change fails
+        """
+        if not self._is_open or not self._serial or not self._serial.is_open:
+            raise TransportException("Transport not open")
+        
+        try:
+            # Update the serial port baudrate
+            self._serial.baudrate = baudrate
+            self.baudrate = baudrate
+            self.logger.info(f"Changed COM port {self.port} baudrate to {baudrate}")
+        except serial.SerialException as e:
+            raise TransportException(f"Failed to change baudrate: {e}") from e
+    
     @staticmethod
     def list_ports() -> list:
         """

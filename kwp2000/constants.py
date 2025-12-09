@@ -108,3 +108,32 @@ BAUDRATE_125000 = 0x06  # seriell+Baudratenparameter 125.000 Baud
 BAUDRATE_10400 = 0x14  # 10.400 Baud seriell
 BAUDRATE_20800 = 0x34  # 20.800 Baud seriell
 
+# Mapping from baudrate identifier to actual baudrate value
+BAUDRATE_IDENTIFIER_TO_VALUE = {
+    BAUDRATE_9600: 9600,
+    BAUDRATE_19200: 19200,
+    BAUDRATE_38400: 38400,
+    BAUDRATE_57600: 57600,
+    BAUDRATE_115200: 115200,
+    BAUDRATE_125000: 125000,
+    BAUDRATE_10400: 10400,
+    BAUDRATE_20800: 20800,
+}
+
+def baudrate_identifier_to_value(identifier: int) -> int:
+    """
+    Convert baudrate identifier to actual baudrate value.
+    
+    Args:
+        identifier: Baudrate identifier byte (e.g., 0x06 for 125000)
+        
+    Returns:
+        Actual baudrate value in baud
+        
+    Raises:
+        ValueError: If identifier is not recognized
+    """
+    if identifier not in BAUDRATE_IDENTIFIER_TO_VALUE:
+        raise ValueError(f"Unknown baudrate identifier: 0x{identifier:02X}")
+    return BAUDRATE_IDENTIFIER_TO_VALUE[identifier]
+
