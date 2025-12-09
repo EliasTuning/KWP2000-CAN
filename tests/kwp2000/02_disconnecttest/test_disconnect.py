@@ -73,3 +73,4 @@ def test_disconnect_diagnostic_session_and_read_data():
             except Exception as e:
                 assert isinstance(e,TP20DisconnectedException),"ExceptionType wrong!"
 
+

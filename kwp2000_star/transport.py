@@ -171,3 +171,4 @@ class KWP2000StarTransport(Transport):
         """Context manager exit."""
         self.close()
 
+
