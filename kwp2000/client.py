@@ -239,24 +239,46 @@ class KWP2000Client:
     
     def access_timing_parameter(
         self,
-        timing_parameter_id: int,
-        timing_values: Optional[bytes] = None,
+        timing_parameter_id: int = services.AccessTimingParameter.TPI_SP,
+        p2min: int = 0x32,
+        p2max: int = 0x02,
+        p3min: int = 0x6E,
+        p3max: int = 0x14,
+        p4min: int = 0x0A,
         timeout: float = 1.0
-    ) -> dict:
+    ) -> services.AccessTimingParameter.ServiceData:
         """
         Access timing parameters.
         
+        According to KWP2000 specification:
+        - TimingParameterIdentifier = 0x03 (TPI_SP)
+        - P2min = 0x32 (25 ms with 0.5 ms resolution)
+        - P2max = 0x02 (50 ms with 25 ms resolution)
+        - P3min = 0x6E (55 ms with 0.5 ms resolution)
+        - P3max = 0x14 (5000 ms with 250 ms resolution)
+        - P4min = 0x0A (5 ms with 0.5 ms resolution)
+        
         Args:
-            timing_parameter_id: Timing parameter ID
-            timing_values: Optional timing values to set
+            timing_parameter_id: Timing parameter identifier (default: 0x03 = TPI_SP)
+            p2min: P2min value (default: 0x32 = 25 ms)
+            p2max: P2max value (default: 0x02 = 50 ms)
+            p3min: P3min value (default: 0x6E = 55 ms)
+            p3max: P3max value (default: 0x14 = 5000 ms)
+            p4min: P4min value (default: 0x0A = 5 ms)
             timeout: Timeout in seconds
             
         Returns:
-            Dictionary with response data
+            ServiceData with parsed response data containing:
+                - timing_parameter_id: Echo of the timing parameter identifier
+                - timing_parameters: TimingParameters object with parsed timing values
         """
         request = services.AccessTimingParameter.make_request(
             timing_parameter_id=timing_parameter_id,
-            timing_values=timing_values
+            p2min=p2min,
+            p2max=p2max,
+            p3min=p3min,
+            p3max=p3max,
+            p4min=p4min
         )
         response = self.send_request(request, timeout=timeout)
         return services.AccessTimingParameter.interpret_response(response)

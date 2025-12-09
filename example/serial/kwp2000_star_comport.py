@@ -8,7 +8,11 @@ the comport baudrate accordingly.
 import logging
 from kwp2000.client import KWP2000Client
 from kwp2000_star.transport import KWP2000StarTransport
-from kwp2000.constants import BAUDRATE_115200, baudrate_identifier_to_value
+from kwp2000.constants import (
+    BAUDRATE_115200,
+    baudrate_identifier_to_value,
+    TIMING_PARAMETER_MINIMAL
+)
 
 try:
     import serial
@@ -37,6 +41,26 @@ if __name__ == "__main__":
     try:
         with client:
             print(f"Connected to {COM_PORT} at 9600 baud")
+            
+            # Set timing parameters to minimal values for fast communication
+            print("\nSetting timing parameters to minimal values...")
+            try:
+                timing_response = client.access_timing_parameter(
+                    p2min=TIMING_PARAMETER_MINIMAL['P2min'],
+                    p2max=TIMING_PARAMETER_MINIMAL['P2max'],
+                    p3min=TIMING_PARAMETER_MINIMAL['P3min'],
+                    p3max=TIMING_PARAMETER_MINIMAL['P3max'],
+                    p4min=TIMING_PARAMETER_MINIMAL['P4min']
+                )
+                print(f"Timing parameters set successfully:")
+                print(f"  - Timing Parameter ID: 0x{timing_response.timing_parameter_id:02X}")
+                if timing_response.timing_parameters:
+                    tp = timing_response.timing_parameters
+                    print(f"  - P2min: 0x{tp.p2min:02X}, P2max: 0x{tp.p2max:02X}")
+                    print(f"  - P3min: 0x{tp.p3min:02X}, P3max: 0x{tp.p3max:02X}")
+                    print(f"  - P4min: 0x{tp.p4min:02X}")
+            except Exception as e:
+                print(f"  - Warning: Could not set timing parameters: {e}")
             
             # Start diagnostic session with maximum baudrate (125k = 0x06)
             print("\nStarting diagnostic session with maximum baudrate (125k)...")

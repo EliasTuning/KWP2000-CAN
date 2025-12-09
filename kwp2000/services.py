@@ -227,49 +227,154 @@ class AccessTimingParameter(ServiceBase):
     """AccessTimingParameter service (0x83)."""
     
     SERVICE_ID = SERVICE_ACCESS_TIMING_PARAMETER
+    POSITIVE_RESPONSE_SERVICE_ID = 0xC3  # ATPPR (AccessTimingParameter Positive Response)
+    
+    # Timing Parameter Identifier constants
+    TPI_SP = 0x03  # Set Parameters
+    
+    @dataclass
+    class TimingParameters:
+        """Timing parameters structure."""
+        p2min: int  # P2min in 0.5 ms units (e.g., 0x32 = 25 ms)
+        p2max: int  # P2max in 25 ms units (e.g., 0x02 = 50 ms)
+        p3min: int  # P3min in 0.5 ms units (e.g., 0x6E = 55 ms)
+        p3max: int  # P3max in 250 ms units (e.g., 0x14 = 5000 ms)
+        p4min: int  # P4min in 0.5 ms units (e.g., 0x0A = 5 ms)
+    
+    @dataclass
+    class ServiceData:
+        """Parsed service data from response."""
+        timing_parameter_id: int
+        timing_parameters: Optional['AccessTimingParameter.TimingParameters'] = None
     
     @classmethod
     def make_request(
         cls,
-        timing_parameter_id: int,
-        timing_values: Optional[bytes] = None
+        timing_parameter_id: int = TPI_SP,
+        p2min: int = 0x32,
+        p2max: int = 0x02,
+        p3min: int = 0x6E,
+        p3max: int = 0x14,
+        p4min: int = 0x0A
     ) -> Request:
         """
         Create an AccessTimingParameter request.
         
+        According to KWP2000 specification:
+        - Byte #1: Service ID = 0x83 (ATP)
+        - Byte #2: TimingParameterIdentifier = 0x03 (TPI_SP)
+        - Byte #3: P2min = 0x32 (25 ms with 0.5 ms resolution)
+        - Byte #4: P2max = 0x02 (50 ms with 25 ms resolution)
+        - Byte #5: P3min = 0x6E (55 ms with 0.5 ms resolution)
+        - Byte #6: P3max = 0x14 (5000 ms with 250 ms resolution)
+        - Byte #7: P4min = 0x0A (5 ms with 0.5 ms resolution)
+        
         Args:
-            timing_parameter_id: Timing parameter ID (0=read limits, 3=set parameters)
-            timing_values: Optional timing values to set
+            timing_parameter_id: Timing parameter identifier (default: 0x03 = TPI_SP)
+            p2min: P2min value (default: 0x32 = 25 ms)
+            p2max: P2max value (default: 0x02 = 50 ms)
+            p3min: P3min value (default: 0x6E = 55 ms)
+            p3max: P3max value (default: 0x14 = 5000 ms)
+            p4min: P4min value (default: 0x0A = 5 ms)
             
         Returns:
             Request object
         """
-        data = bytes([timing_parameter_id])
-        if timing_values:
-            data += timing_values
+        data = bytes([
+            timing_parameter_id,
+            p2min,
+            p2max,
+            p3min,
+            p3max,
+            p4min
+        ])
         return Request(cls.SERVICE_ID, data)
     
     @classmethod
-    def interpret_response(cls, response: Response) -> dict:
+    def make_request_with_timing_parameters(
+        cls,
+        timing_parameter_id: int = TPI_SP,
+        timing_parameters: Optional['AccessTimingParameter.TimingParameters'] = None
+    ) -> Request:
+        """
+        Create an AccessTimingParameter request with TimingParameters object.
+        
+        Args:
+            timing_parameter_id: Timing parameter identifier (default: 0x03 = TPI_SP)
+            timing_parameters: TimingParameters object (default: uses standard values)
+            
+        Returns:
+            Request object
+        """
+        if timing_parameters is None:
+            timing_parameters = cls.TimingParameters(
+                p2min=0x32,
+                p2max=0x02,
+                p3min=0x6E,
+                p3max=0x14,
+                p4min=0x0A
+            )
+        
+        return cls.make_request(
+            timing_parameter_id=timing_parameter_id,
+            p2min=timing_parameters.p2min,
+            p2max=timing_parameters.p2max,
+            p3min=timing_parameters.p3min,
+            p3max=timing_parameters.p3max,
+            p4min=timing_parameters.p4min
+        )
+    
+    @classmethod
+    def interpret_response(cls, response: Response) -> 'AccessTimingParameter.ServiceData':
         """
         Interpret an AccessTimingParameter response.
+        
+        Positive Response format:
+        - Byte #1: Service ID = 0xC3 (ATPPR)
+        - Byte #2: TimingParameterIdentifier = 0x03 (TPI_SP)
+        - Byte #3: P2min = 0x32 (25 ms with 0.5 ms resolution)
+        - Byte #4: P2max = 0x02 (50 ms with 25 ms resolution)
+        - Byte #5: P3min = 0x6E (55 ms with 0.5 ms resolution)
+        - Byte #6: P3max = 0x14 (5000 ms with 250 ms resolution)
+        - Byte #7: P4min = 0x0A (5 ms with 0.5 ms resolution)
+        
+        Negative Response format:
+        - Byte #1: 0x7F (NR)
+        - Byte #2: 0x03 (TPI_SP)
+        - Byte #3: Response code (0x10 = generalReject, 0x12 = subFunctionNotSupported)
         
         Args:
             response: Response object
             
         Returns:
-            Dictionary with parsed response data
+            ServiceData with parsed response data
+            
+        Raises:
+            ValueError: If response data is invalid
         """
         if not response.is_positive():
             raise ValueError("Response is not positive")
         
-        result = {}
-        if len(response.data) > 0:
-            result['timing_parameter_id_echo'] = response.data[0]
-            if len(response.data) > 1:
-                result['timing_values'] = response.data[1:]
+        # Positive response should have at least 6 bytes:
+        # timing_parameter_id (1 byte) + 5 timing parameter bytes
+        if len(response.data) < 6:
+            raise ValueError(f"Invalid response data length: expected at least 6 bytes, got {len(response.data)}")
         
-        return result
+        timing_parameter_id = response.data[0]
+        
+        # Parse timing parameters
+        timing_parameters = cls.TimingParameters(
+            p2min=response.data[1],
+            p2max=response.data[2],
+            p3min=response.data[3],
+            p3max=response.data[4],
+            p4min=response.data[5]
+        )
+        
+        return cls.ServiceData(
+            timing_parameter_id=timing_parameter_id,
+            timing_parameters=timing_parameters
+        )
 
 
 class SendData(ServiceBase):

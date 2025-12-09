@@ -92,6 +92,81 @@ EXTENDED_P3_MAX = 5000
 TIMING_RESOLUTION_P2 = 0.5
 TIMING_RESOLUTION_P3 = 0.5
 TIMING_RESOLUTION_P4 = 0.5
+TIMING_RESOLUTION_P2MAX = 25.0  # P2max uses 25 ms resolution
+TIMING_RESOLUTION_P3MAX = 250.0  # P3max uses 250 ms resolution
+
+# Timing parameter value ranges (encoded byte values)
+# P2min: 0.5 ms resolution (0x00 = 0 ms, 0xFF = 127.5 ms)
+TIMING_P2MIN_MIN = 0x00  # 0 ms
+TIMING_P2MIN_MAX = 0xFF  # 127.5 ms (255 * 0.5)
+
+# P2max: 25 ms resolution (0x00 = 0 ms, 0xFF = 6375 ms)
+TIMING_P2MAX_MIN = 0x00  # 0 ms
+TIMING_P2MAX_MAX = 0xFF  # 6375 ms (255 * 25)
+
+# P3min: 0.5 ms resolution (0x00 = 0 ms, 0xFF = 127.5 ms)
+TIMING_P3MIN_MIN = 0x00  # 0 ms
+TIMING_P3MIN_MAX = 0xFF  # 127.5 ms (255 * 0.5)
+
+# P3max: 250 ms resolution (0x00 = 0 ms, 0xFF = 63750 ms)
+TIMING_P3MAX_MIN = 0x00  # 0 ms
+TIMING_P3MAX_MAX = 0xFF  # 63750 ms (255 * 250)
+
+# P4min: 0.5 ms resolution (0x00 = 0 ms, 0xFF = 127.5 ms)
+TIMING_P4MIN_MIN = 0x00  # 0 ms
+TIMING_P4MIN_MAX = 0xFF  # 127.5 ms (255 * 0.5)
+
+# Timing parameter mapping tables
+TIMING_PARAMETER_RANGES = {
+    'P2min': {
+        'min': TIMING_P2MIN_MIN,
+        'max': TIMING_P2MIN_MAX,
+        'resolution': TIMING_RESOLUTION_P2,
+        'description': 'P2min: Bytezwischenzeit des Antworttelegramms (0-127.5 ms)'
+    },
+    'P2max': {
+        'min': TIMING_P2MAX_MIN,
+        'max': TIMING_P2MAX_MAX,
+        'resolution': TIMING_RESOLUTION_P2MAX,
+        'description': 'P2max: Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (0-6375 ms)'
+    },
+    'P3min': {
+        'min': TIMING_P3MIN_MIN,
+        'max': TIMING_P3MIN_MAX,
+        'resolution': TIMING_RESOLUTION_P3,
+        'description': 'P3min: Zeit zwischen Antworttelegrammende und neuem Request (0-127.5 ms)'
+    },
+    'P3max': {
+        'min': TIMING_P3MAX_MIN,
+        'max': TIMING_P3MAX_MAX,
+        'resolution': TIMING_RESOLUTION_P3MAX,
+        'description': 'P3max: Zeit zwischen Antworttelegrammende und neuem Request (0-63750 ms)'
+    },
+    'P4min': {
+        'min': TIMING_P4MIN_MIN,
+        'max': TIMING_P4MIN_MAX,
+        'resolution': TIMING_RESOLUTION_P4,
+        'description': 'P4min: Bytezwischenzeit des Requesttelegramms (0-127.5 ms)'
+    }
+}
+
+# Minimal timing parameter values (for fast communication)
+TIMING_PARAMETER_MINIMAL = {
+    'P2min': TIMING_P2MIN_MIN,  # 0x00 = 0 ms
+    'P2max': TIMING_P2MAX_MIN,  # 0x00 = 0 ms
+    'P3min': TIMING_P3MIN_MIN,  # 0x00 = 0 ms
+    'P3max': TIMING_P3MAX_MIN,  # 0x00 = 0 ms
+    'P4min': TIMING_P4MIN_MIN   # 0x00 = 0 ms
+}
+
+# Standard timing parameter values (from specification example)
+TIMING_PARAMETER_STANDARD = {
+    'P2min': 0x32,  # 25 ms (50 * 0.5)
+    'P2max': 0x02,  # 50 ms (2 * 25)
+    'P3min': 0x6E,  # 55 ms (110 * 0.5)
+    'P3max': 0x14,  # 5000 ms (20 * 250)
+    'P4min': 0x0A   # 5 ms (10 * 0.5)
+}
 
 # StartDiagnosticSession diagnostic modes
 DIAGNOSTIC_MODE_OBD2 = 0x81  # Standardmodus OBD2-Modus (DT-SD-OBDIIMD)
