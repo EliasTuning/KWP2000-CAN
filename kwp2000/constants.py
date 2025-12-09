@@ -93,3 +93,18 @@ TIMING_RESOLUTION_P2 = 0.5
 TIMING_RESOLUTION_P3 = 0.5
 TIMING_RESOLUTION_P4 = 0.5
 
+# StartDiagnosticSession diagnostic modes
+DIAGNOSTIC_MODE_OBD2 = 0x81  # Standardmodus OBD2-Modus (DT-SD-OBDIIMD)
+DIAGNOSTIC_MODE_ECU_PROGRAMMING = 0x85  # Steuergeräte Programmiermodus (ECUPM)
+DIAGNOSTIC_MODE_ECU_DEVELOPMENT = 0x86  # SG-Entwicklungs Modus (ECUDM)
+
+# StartDiagnosticSession baudrate identifiers
+BAUDRATE_9600 = 0x01  # 9.600 Baud seriell (PC9600)
+BAUDRATE_19200 = 0x02  # 19.200 Baud seriell (PC19200)
+BAUDRATE_38400 = 0x03  # 38.400 Baud seriell (PC38400)
+BAUDRATE_57600 = 0x04  # 57.600 Baud seriell
+BAUDRATE_115200 = 0x05  # 115.200 Baud seriell
+BAUDRATE_125000 = 0x06  # seriell+Baudratenparameter 125.000 Baud
+BAUDRATE_10400 = 0x14  # 10.400 Baud seriell
+BAUDRATE_20800 = 0x34  # 20.800 Baud seriell
+

@@ -14,6 +14,9 @@ from kwp2000.constants import (
     SERVICE_ECU_RESET,
     SERVICE_READ_DATA_BY_LOCAL_IDENTIFIER,
     SERVICE_READ_MEMORY_BY_ADDRESS,
+    DIAGNOSTIC_MODE_OBD2,
+    DIAGNOSTIC_MODE_ECU_PROGRAMMING,
+    DIAGNOSTIC_MODE_ECU_DEVELOPMENT,
 )
 
 
@@ -316,21 +319,52 @@ class StartDiagnosticSession(ServiceBase):
     
     SERVICE_ID = SERVICE_START_DIAGNOSTIC_SESSION
     
+    class DiagnosticMode:
+        """Diagnostic mode constants."""
+        OBD2 = DIAGNOSTIC_MODE_OBD2  # Standardmodus OBD2-Modus (DT-SD-OBDIIMD)
+        ECU_PROGRAMMING = DIAGNOSTIC_MODE_ECU_PROGRAMMING  # Steuergeräte Programmiermodus (ECUPM)
+        ECU_DEVELOPMENT = DIAGNOSTIC_MODE_ECU_DEVELOPMENT  # SG-Entwicklungs Modus (ECUDM)
+    
+    @dataclass
+    class ServiceData:
+        """Parsed service data from response."""
+        diagnostic_mode: int
+        baudrate_identifier: Optional[int] = None
+    
     @classmethod
     def make_request(
         cls,
-        session_type: int
+        diagnostic_mode: Optional[int] = None,
+        baudrate_identifier: Optional[int] = None,
+        session_type: Optional[int] = None  # Backward compatibility alias
     ) -> Request:
         """
         Create a StartDiagnosticSession request.
         
         Args:
-            session_type: Session type (e.g., 0x89 for extended diagnostic session)
+            diagnostic_mode: Diagnostic mode (0x81=OBD2, 0x85=ECU Programming, 0x86=ECU Development)
+            baudrate_identifier: Optional baudrate identifier (0x01=9600, 0x02=19200, etc.)
+            session_type: Backward compatibility alias for diagnostic_mode
             
         Returns:
             Request object
+            
+        Raises:
+            ValueError: If neither diagnostic_mode nor session_type is provided
         """
-        return Request(cls.SERVICE_ID, bytes([session_type]))
+        # Support backward compatibility: if session_type is provided, use it as diagnostic_mode
+        if session_type is not None:
+            diagnostic_mode = session_type
+        
+        if diagnostic_mode is None:
+            raise ValueError("diagnostic_mode or session_type must be provided")
+        
+        # Build request data: diagnosticMode (mandatory) + baudrateIdentifier (optional)
+        data = bytes([diagnostic_mode])
+        if baudrate_identifier is not None:
+            data += bytes([baudrate_identifier])
+        
+        return Request(cls.SERVICE_ID, data)
     
     @classmethod
     def interpret_response(cls, response: Response) -> dict:
@@ -342,14 +376,32 @@ class StartDiagnosticSession(ServiceBase):
             
         Returns:
             Dictionary with parsed response data containing:
-                - session_type_echo: Echo of the requested session type
+                - diagnostic_mode: Echo of the requested diagnostic mode
+                - baudrate_identifier: Echo of the requested baudrate identifier (if present)
+                - session_type_echo: Backward compatibility alias for diagnostic_mode
+            
+        Raises:
+            ValueError: If response data is invalid
         """
         if not response.is_positive():
             raise ValueError("Response is not positive")
         
-        result = {}
-        if len(response.data) > 0:
-            result['session_type_echo'] = response.data[0]
+        if len(response.data) < 1:
+            raise ValueError("Invalid response data length: must be at least 1 byte")
+        
+        diagnostic_mode = response.data[0]
+        baudrate_identifier = None
+        
+        if len(response.data) >= 2:
+            baudrate_identifier = response.data[1]
+        
+        result = {
+            'diagnostic_mode': diagnostic_mode,
+            'session_type_echo': diagnostic_mode  # Backward compatibility
+        }
+        
+        if baudrate_identifier is not None:
+            result['baudrate_identifier'] = baudrate_identifier
         
         return result
 

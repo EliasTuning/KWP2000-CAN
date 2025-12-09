@@ -263,21 +263,29 @@ class KWP2000Client:
     
     def startDiagnosticSession(
         self,
-        session_type: int,
+        diagnostic_mode: Optional[int] = None,
+        baudrate_identifier: Optional[int] = None,
+        session_type: Optional[int] = None,  # Backward compatibility alias
         timeout: float = 1.0
     ) -> dict:
         """
         Start diagnostic session.
         
         Args:
-            session_type: Session type (e.g., 0x89 for extended diagnostic session)
+            diagnostic_mode: Diagnostic mode (0x81=OBD2, 0x85=ECU Programming, 0x86=ECU Development)
+            baudrate_identifier: Optional baudrate identifier (0x01=9600, 0x02=19200, etc.)
+            session_type: Backward compatibility alias for diagnostic_mode
             timeout: Timeout in seconds
             
         Returns:
-            Dictionary with response data containing:
-                - session_type_echo: Echo of the requested session type
+            Dictionary with parsed response data containing:
+                - diagnostic_mode: Echo of the requested diagnostic mode
+                - session_type_echo: Backward compatibility alias for diagnostic_mode
+                - baudrate_identifier: Echo of the requested baudrate identifier (if present)
         """
         request = services.StartDiagnosticSession.make_request(
+            diagnostic_mode=diagnostic_mode,
+            baudrate_identifier=baudrate_identifier,
             session_type=session_type
         )
         response = self.send_request(request, timeout=timeout)
