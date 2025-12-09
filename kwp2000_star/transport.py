@@ -113,7 +113,7 @@ class KWP2000StarTransport(Transport):
             # Build STAR frame from payload
             star_frame = build_frame(data)
             self.logger.debug(f"Sending STAR frame: {star_frame.hex()}")
-            print(star_frame.hex())
+
             
             # Send frame through COM port transport
             self._comport_transport.send(star_frame)
