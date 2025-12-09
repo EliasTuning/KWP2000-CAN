@@ -118,36 +118,47 @@ TIMING_P4MIN_MIN = 0x00  # 0 ms
 TIMING_P4MIN_MAX = 0xFF  # 127.5 ms (255 * 0.5)
 
 # Timing parameter mapping tables
+# According to KWP2000 ISO 14230-3 specification:
+# P1 = Bytezwischenzeit des Antworttelegramms (0-20ms)
+# P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
+# P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
+# P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
 TIMING_PARAMETER_RANGES = {
+    'P1': {
+        'min': 0,
+        'max': 20,
+        'resolution': 1.0,
+        'description': 'P1: Bytezwischenzeit des Antworttelegramms (0-20 ms)'
+    },
     'P2min': {
         'min': TIMING_P2MIN_MIN,
         'max': TIMING_P2MIN_MAX,
         'resolution': TIMING_RESOLUTION_P2,
-        'description': 'P2min: Bytezwischenzeit des Antworttelegramms (0-127.5 ms)'
+        'description': 'P2min: Minimum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (0-127.5 ms)'
     },
     'P2max': {
         'min': TIMING_P2MAX_MIN,
         'max': TIMING_P2MAX_MAX,
         'resolution': TIMING_RESOLUTION_P2MAX,
-        'description': 'P2max: Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (0-6375 ms)'
+        'description': 'P2max: Maximum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50 ms, 0-6375 ms)'
     },
     'P3min': {
         'min': TIMING_P3MIN_MIN,
         'max': TIMING_P3MIN_MAX,
         'resolution': TIMING_RESOLUTION_P3,
-        'description': 'P3min: Zeit zwischen Antworttelegrammende und neuem Request (0-127.5 ms)'
+        'description': 'P3min: Minimum Zeit zwischen Antworttelegrammende und neuem Request (55-µms, 0-127.5 ms)'
     },
     'P3max': {
         'min': TIMING_P3MAX_MIN,
         'max': TIMING_P3MAX_MAX,
         'resolution': TIMING_RESOLUTION_P3MAX,
-        'description': 'P3max: Zeit zwischen Antworttelegrammende und neuem Request (0-63750 ms)'
+        'description': 'P3max: Maximum Zeit zwischen Antworttelegrammende und neuem Request (0-63750 ms)'
     },
     'P4min': {
         'min': TIMING_P4MIN_MIN,
         'max': TIMING_P4MIN_MAX,
         'resolution': TIMING_RESOLUTION_P4,
-        'description': 'P4min: Bytezwischenzeit des Requesttelegramms (0-127.5 ms)'
+        'description': 'P4min: Bytezwischenzeit des Requesttelegramms (0-20 ms, 0-127.5 ms)'
     }
 }
 

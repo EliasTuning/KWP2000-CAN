@@ -290,21 +290,26 @@ class KWP2000Client:
         """
         Access timing parameters.
         
-        According to KWP2000 specification:
+        According to KWP2000 ISO 14230-3 specification:
         - TimingParameterIdentifier = 0x03 (TPI_SP)
         - P2min = 0x32 (25 ms with 0.5 ms resolution)
+          P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
         - P2max = 0x02 (50 ms with 25 ms resolution)
         - P3min = 0x6E (55 ms with 0.5 ms resolution)
+          P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
         - P3max = 0x14 (5000 ms with 250 ms resolution)
         - P4min = 0x0A (5 ms with 0.5 ms resolution)
+          P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
+        
+        Note: P1 = Bytezwischenzeit des Antworttelegramms (0-20ms) is not part of this service.
         
         Args:
             timing_parameter_id: Timing parameter identifier (default: 0x03 = TPI_SP)
-            p2min: P2min value (default: 0x32 = 25 ms)
-            p2max: P2max value (default: 0x02 = 50 ms)
-            p3min: P3min value (default: 0x6E = 55 ms)
-            p3max: P3max value (default: 0x14 = 5000 ms)
-            p4min: P4min value (default: 0x0A = 5 ms)
+            p2min: P2min value - Minimum Zeit zwischen Request und Antworttelegramm (default: 0x32 = 25 ms)
+            p2max: P2max value - Maximum Zeit zwischen Request und Antworttelegramm (default: 0x02 = 50 ms)
+            p3min: P3min value - Minimum Zeit zwischen Antworttelegrammende und neuem Request (default: 0x6E = 55 ms)
+            p3max: P3max value - Maximum Zeit zwischen Antworttelegrammende und neuem Request (default: 0x14 = 5000 ms)
+            p4min: P4min value - Bytezwischenzeit des Requesttelegramms (default: 0x0A = 5 ms)
             timeout: Timeout in seconds
             
         Returns:

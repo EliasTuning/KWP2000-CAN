@@ -303,12 +303,19 @@ class AccessTimingParameter(ServiceBase):
     
     @dataclass
     class TimingParameters:
-        """Timing parameters structure."""
-        p2min: int  # P2min in 0.5 ms units (e.g., 0x32 = 25 ms)
-        p2max: int  # P2max in 25 ms units (e.g., 0x02 = 50 ms)
-        p3min: int  # P3min in 0.5 ms units (e.g., 0x6E = 55 ms)
-        p3max: int  # P3max in 250 ms units (e.g., 0x14 = 5000 ms)
-        p4min: int  # P4min in 0.5 ms units (e.g., 0x0A = 5 ms)
+        """Timing parameters structure.
+        
+        According to KWP2000 ISO 14230-3:
+        - P1 = Bytezwischenzeit des Antworttelegramms (0-20ms)
+        - P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
+        - P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
+        - P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
+        """
+        p2min: int  # P2min: Minimum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (0.5 ms units, e.g., 0x32 = 25 ms)
+        p2max: int  # P2max: Maximum Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25 ms units, e.g., 0x02 = 50 ms)
+        p3min: int  # P3min: Minimum Zeit zwischen Antworttelegrammende und neuem Request (0.5 ms units, e.g., 0x6E = 55 ms)
+        p3max: int  # P3max: Maximum Zeit zwischen Antworttelegrammende und neuem Request (250 ms units, e.g., 0x14 = 5000 ms)
+        p4min: int  # P4min: Bytezwischenzeit des Requesttelegramms (0.5 ms units, e.g., 0x0A = 5 ms)
     
     @dataclass
     class ServiceData:
@@ -329,22 +336,27 @@ class AccessTimingParameter(ServiceBase):
         """
         Create an AccessTimingParameter request.
         
-        According to KWP2000 specification:
+        According to KWP2000 ISO 14230-3 specification:
         - Byte #1: Service ID = 0x83 (ATP)
         - Byte #2: TimingParameterIdentifier = 0x03 (TPI_SP)
         - Byte #3: P2min = 0x32 (25 ms with 0.5 ms resolution)
+          P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
         - Byte #4: P2max = 0x02 (50 ms with 25 ms resolution)
         - Byte #5: P3min = 0x6E (55 ms with 0.5 ms resolution)
+          P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
         - Byte #6: P3max = 0x14 (5000 ms with 250 ms resolution)
         - Byte #7: P4min = 0x0A (5 ms with 0.5 ms resolution)
+          P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
+        
+        Note: P1 = Bytezwischenzeit des Antworttelegramms (0-20ms) is not part of this service.
         
         Args:
             timing_parameter_id: Timing parameter identifier (default: 0x03 = TPI_SP)
-            p2min: P2min value (default: 0x32 = 25 ms)
-            p2max: P2max value (default: 0x02 = 50 ms)
-            p3min: P3min value (default: 0x6E = 55 ms)
-            p3max: P3max value (default: 0x14 = 5000 ms)
-            p4min: P4min value (default: 0x0A = 5 ms)
+            p2min: P2min value - Minimum Zeit zwischen Request und Antworttelegramm (default: 0x32 = 25 ms)
+            p2max: P2max value - Maximum Zeit zwischen Request und Antworttelegramm (default: 0x02 = 50 ms)
+            p3min: P3min value - Minimum Zeit zwischen Antworttelegrammende und neuem Request (default: 0x6E = 55 ms)
+            p3max: P3max value - Maximum Zeit zwischen Antworttelegrammende und neuem Request (default: 0x14 = 5000 ms)
+            p4min: P4min value - Bytezwischenzeit des Requesttelegramms (default: 0x0A = 5 ms)
             
         Returns:
             Request object
@@ -402,10 +414,13 @@ class AccessTimingParameter(ServiceBase):
         - Byte #1: Service ID = 0xC3 (ATPPR)
         - Byte #2: TimingParameterIdentifier = 0x03 (TPI_SP)
         - Byte #3: P2min = 0x32 (25 ms with 0.5 ms resolution)
+          P2 = Zeit zwischen Request und Antworttelegramm bzw. Zeit zwischen 2 Antworttelegrammen (25-50ms)
         - Byte #4: P2max = 0x02 (50 ms with 25 ms resolution)
         - Byte #5: P3min = 0x6E (55 ms with 0.5 ms resolution)
+          P3 = Zeit zwischen Antworttelegrammende und neuem Request (55-µms)
         - Byte #6: P3max = 0x14 (5000 ms with 250 ms resolution)
         - Byte #7: P4min = 0x0A (5 ms with 0.5 ms resolution)
+          P4 = Bytezwischenzeit des Requesttelegramms (0-20ms)
         
         Negative Response format:
         - Byte #1: 0x7F (NR)
