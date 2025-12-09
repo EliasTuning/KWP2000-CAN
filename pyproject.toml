@@ -48,7 +48,7 @@ Repository = "https://github.com/yourusername/KWP2000-CAN"
 Issues = "https://github.com/yourusername/KWP2000-CAN/issues"
 
 [tool.setuptools]
-packages = ["kwp2000", "tp20", "j2534"]
+packages = ["kwp2000", "kwp2000_star", "ds2", "tp20", "j2534"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]

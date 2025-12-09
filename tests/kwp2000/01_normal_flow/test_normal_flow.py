@@ -86,3 +86,4 @@ def test_normal_flow_diagnostic_session_and_read_data():
             assert isinstance(data_response['data'], bytes), "Data should be bytes"
 
 
+
