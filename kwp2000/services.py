@@ -1176,7 +1176,7 @@ class ReadDataByCommonIdentifier(ServiceBase):
         Returns:
             Request object
         """
-        return Request(cls.SERVICE_ID, bytes([common_identifier]))
+        return Request(cls.SERVICE_ID, common_identifier.to_bytes(2, byteorder='big'))
     
     @classmethod
     def interpret_response(cls, response: Response) -> 'ReadDataByCommonIdentifier.ServiceData':
