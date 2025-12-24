@@ -123,11 +123,13 @@ class KWP2000StarTransportCAN(Transport):
             self.logger.debug(f"Sending STAR frame: {star_frame.hex()}")
 
             # Send frame through CAN connection using tx_id
-            # Split frame into 8-byte CAN frames if needed
+            # Split frame into 8-byte CAN frames if needed, padding each to 8 bytes
             frame_offset = 0
             while frame_offset < len(star_frame):
                 chunk = star_frame[frame_offset:frame_offset + 8]
-                self._can_connection.send_can_frame(self._tx_id, chunk)
+                # Pad chunk to exactly 8 bytes with zeros
+                padded_chunk = chunk + b'\x00' * (8 - len(chunk))
+                self._can_connection.send_can_frame(self._tx_id, padded_chunk)
                 frame_offset += 8
                 # Add small delay between frames if sending multiple frames
                 if frame_offset < len(star_frame):
