@@ -29,7 +29,7 @@ class KWP2000StarTransport(Transport):
     This implementation is synchronous and does not use threading.
     
     Usage:
-        from kwp2000_star.transport import KWP2000StarTransport
+        from kwp2000_star_serial.transport import KWP2000StarTransport
         from kwp2000.client import KWP2000Client
         
         transport = KWP2000StarTransport(port='COM1', baudrate=9600)
