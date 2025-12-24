@@ -6,8 +6,8 @@ from typing import Optional, List
 from kwp2000.transport import Transport
 from kwp2000.exceptions import TransportException, TimeoutException, NegativeResponseException
 from kwp2000.constants import TimingParameters, TIMING_PARAMETER_STANDARD
-from kwp2000_star.frames import build_frame, parse_frame
-from kwp2000_star.exceptions import InvalidChecksumException, InvalidFrameException
+from .frames import build_frame, parse_frame
+from .exceptions import InvalidChecksumException, InvalidFrameException
 from comport import ComportTransport
 
 try:

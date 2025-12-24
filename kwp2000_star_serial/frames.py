@@ -1,8 +1,8 @@
 """Frame parsing and building for KWP2000-STAR protocol."""
 
 from typing import Tuple
-from kwp2000_star.exceptions import InvalidChecksumException, InvalidFrameException
-from kwp2000_star.constants import START_BYTE, TARGET_ADDR, SRC_ADDR
+from .exceptions import InvalidChecksumException, InvalidFrameException
+from .constants import START_BYTE, TARGET_ADDR, SRC_ADDR
 
 
 def calculate_checksum(message: bytes) -> int:
