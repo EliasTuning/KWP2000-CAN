@@ -1,4 +1,4 @@
-"""Transport layer for KWP2000-STAR protocol over CAN bus using ISO-TP."""
+"""Transport layer for KWP2000-STAR protocol over CAN bus."""
 
 import time
 import logging
@@ -12,25 +12,25 @@ from .exceptions import InvalidChecksumException, InvalidFrameException
 
 class KWP2000StarTransportCAN(Transport):
     """
-    KWP2000-STAR transport layer that wraps an ISO-TP CAN connection.
+    KWP2000-STAR transport layer that wraps a CAN connection.
 
     Handles STAR frame encoding/decoding (build_frame/parse_frame) and provides
     a Transport interface compatible with KWP2000Client.
 
-    This implementation wraps an ISO-TP connection (e.g., J2534Connection from udsoncan)
-    and sends/receives STAR frames over ISO-TP.
+    This implementation wraps a CAN connection (e.g., J2534CanConnection)
+    and sends/receives STAR frames over CAN bus using rx_id and tx_id.
 
     Usage:
-        from kwp2000_star_serial.transport_can import KWP2000StarTransportCAN
+        from kwp2000_star_can.transport import KWP2000StarTransportCAN
         from kwp2000.client import KWP2000Client
-        from udsoncan.connections import J2534Connection
+        from j2534.can_connection import J2534CanConnection
 
-        # Create ISO-TP connection
-        conn = J2534Connection(windll='path/to/dll', rxid=0x7E8, txid=0x7E0)
+        # Create CAN connection
+        conn = J2534CanConnection(dll_path='path/to/dll.dll')
         conn.open()
 
         # Create STAR transport wrapper
-        transport = KWP2000StarTransportCAN(conn)
+        transport = KWP2000StarTransportCAN(can_connection=conn, rx_id=0x612, tx_id=0x6F1)
         client = KWP2000Client(transport)
         with client:
             response = client.startDiagnosticSession(session_type=0x81)
@@ -38,15 +38,20 @@ class KWP2000StarTransportCAN(Transport):
 
     def __init__(
             self,
-            isotp_connection,
+            can_connection,
+            rx_id: int,
+            tx_id: int,
             logger: Optional[logging.Logger] = None
     ):
         """
         Initialize KWP2000-STAR CAN transport.
 
         Args:
-            isotp_connection: ISO-TP connection object (e.g., J2534Connection from udsoncan)
-                Must implement: open(), close(), send(data: bytes), wait_frame(timeout: float) -> Optional[bytes]
+            can_connection: CAN connection object (e.g., J2534CanConnection)
+                Must implement: open(), close(), send_can_frame(can_id: int, data: bytes),
+                recv_can_frame(timeout: float) -> Optional[Tuple[int, bytes]]
+            rx_id: CAN ID to receive frames on
+            tx_id: CAN ID to send frames on
             logger: Optional logger instance (default: root logger)
         """
         self.logger = logger if logger is not None else logging.getLogger(__name__)
@@ -54,8 +59,10 @@ class KWP2000StarTransportCAN(Transport):
         # Access timing parameters (used to set wait_frame timeout)
         self.access_timings: TimingParameters = TIMING_PARAMETER_STANDARD
 
-        # Store ISO-TP connection
-        self._isotp_connection = isotp_connection
+        # Store CAN connection
+        self._can_connection = can_connection
+        self._rx_id = rx_id
+        self._tx_id = tx_id
 
         self._is_open = False
 
@@ -64,22 +71,22 @@ class KWP2000StarTransportCAN(Transport):
         if self._is_open:
             return
 
-        # Open ISO-TP connection if not already open
-        # Check if connection has an 'opened' attribute (like J2534Connection)
-        if hasattr(self._isotp_connection, 'opened'):
-            if not self._isotp_connection.opened:
-                self._isotp_connection.open()
-        elif hasattr(self._isotp_connection, 'open'):
+        # Open CAN connection if not already open
+        # Check if connection has an '_is_open' attribute (like J2534CanConnection)
+        if hasattr(self._can_connection, '_is_open'):
+            if not self._can_connection._is_open:
+                self._can_connection.open()
+        elif hasattr(self._can_connection, 'open'):
             # Try to open, but don't fail if already open
             try:
-                self._isotp_connection.open()
+                self._can_connection.open()
             except (AttributeError, RuntimeError, Exception) as e:
                 # Connection might already be open or doesn't support this check
                 # Log but continue - the connection will be tested when we use it
                 self.logger.debug(f"Could not verify connection state: {e}")
 
         self._is_open = True
-        self.logger.info("KWP2000-STAR CAN transport opened")
+        self.logger.info(f"KWP2000-STAR CAN transport opened (rx_id=0x{self._rx_id:X}, tx_id=0x{self._tx_id:X})")
 
     def close(self) -> None:
         """Close the transport connection."""
@@ -87,7 +94,7 @@ class KWP2000StarTransportCAN(Transport):
             return
 
         try:
-            # Don't close the ISO-TP connection as it might be used elsewhere
+            # Don't close the CAN connection as it might be used elsewhere
             # Only mark our transport as closed
             self._is_open = False
             self.logger.info("KWP2000-STAR CAN transport closed")
@@ -99,7 +106,7 @@ class KWP2000StarTransportCAN(Transport):
         Send KWP2000 service data over STAR transport.
 
         This method wraps the service data (payload) in a STAR frame and sends it
-        over the ISO-TP connection.
+        over the CAN connection using tx_id.
 
         Args:
             data: KWP2000 service data bytes (service ID + data, without STAR framing)
@@ -113,10 +120,18 @@ class KWP2000StarTransportCAN(Transport):
         try:
             # Build STAR frame from payload
             star_frame = build_frame(data)
-            self.logger.error(f"Sending STAR frame: {star_frame.hex()}")
+            self.logger.debug(f"Sending STAR frame: {star_frame.hex()}")
 
-            # Send frame through ISO-TP connection
-            self._isotp_connection.send(star_frame)
+            # Send frame through CAN connection using tx_id
+            # Split frame into 8-byte CAN frames if needed
+            frame_offset = 0
+            while frame_offset < len(star_frame):
+                chunk = star_frame[frame_offset:frame_offset + 8]
+                self._can_connection.send_can_frame(self._tx_id, chunk)
+                frame_offset += 8
+                # Add small delay between frames if sending multiple frames
+                if frame_offset < len(star_frame):
+                    time.sleep(0.001)  # 1ms delay between frames
 
         except Exception as e:
             raise TransportException(f"Failed to send STAR frame: {e}") from e
@@ -125,8 +140,8 @@ class KWP2000StarTransportCAN(Transport):
         """
         Wait for and receive a STAR frame, returning the payload.
 
-        This method receives a STAR frame from the ISO-TP connection, parses it,
-        and returns the KWP2000 service data (payload).
+        This method receives CAN frames from the CAN connection, filters by rx_id,
+        reassembles them into a STAR frame, parses it, and returns the KWP2000 service data (payload).
 
         Args:
             timeout: Maximum time to wait in seconds (ignored, timeout is calculated from access_timings)
@@ -145,17 +160,56 @@ class KWP2000StarTransportCAN(Transport):
             # P2max uses 25 ms resolution, convert to seconds
             calculated_timeout = (self.access_timings.p2max * 25.0) / 1000.0
 
-            # Receive STAR frame from ISO-TP connection
-            star_frame = self._isotp_connection.wait_frame(timeout=calculated_timeout)
+            # Receive CAN frames and filter by rx_id
+            star_frame = bytearray()
+            start_time = time.time()
+            
+            while True:
+                # Check timeout
+                elapsed = time.time() - start_time
+                if elapsed >= calculated_timeout:
+                    if len(star_frame) == 0:
+                        return None
+                    # If we have partial frame, try to parse it
+                    break
+                
+                # Receive CAN frame
+                remaining_timeout = calculated_timeout - elapsed
+                frame_result = self._can_connection.recv_can_frame(timeout=remaining_timeout)
+                
+                if frame_result is None:
+                    # Timeout - if we have partial frame, try to parse it
+                    if len(star_frame) > 0:
+                        break
+                    return None
+                
+                can_id, can_data = frame_result
+                
+                # Filter by rx_id
+                if can_id != self._rx_id:
+                    self.logger.debug(f"Ignoring frame with CAN ID 0x{can_id:X} (expected 0x{self._rx_id:X})")
+                    continue
+                
+                # Append data to frame
+                star_frame.extend(can_data)
+                
+                # Check if we have a complete frame
+                # STAR frame format: [SRC_ADDR, length, payload...]
+                # Minimum frame size is 2 bytes (SRC_ADDR + length)
+                if len(star_frame) >= 2:
+                    expected_length = 2 + star_frame[1]  # SRC_ADDR + length + payload
+                    if len(star_frame) >= expected_length:
+                        # We have a complete frame
+                        break
 
-            if star_frame is None:
+            if len(star_frame) == 0:
                 return None
 
-            self.logger.debug(f"Received STAR frame: {star_frame.hex()}")
+            self.logger.debug(f"Received STAR frame: {bytes(star_frame).hex()}")
 
             # Parse STAR frame to extract payload
             try:
-                payload, = parse_frame(star_frame)
+                payload, = parse_frame(bytes(star_frame))
                 self.logger.debug(f"Parsed payload: {payload.hex()}")
                 return payload
             except (InvalidFrameException, InvalidChecksumException) as e:
