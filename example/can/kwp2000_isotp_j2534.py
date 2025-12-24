@@ -36,6 +36,6 @@ if __name__ == "__main__":
 
         while(True):
             # Read data by local identifier
-            data = star_client.read_ecu_identification(timeout=3)
+            data = star_client.read_ecu_identification(ecu_identification_option=0x80)
             print(f"Data read: {data}")
             time.sleep(2)

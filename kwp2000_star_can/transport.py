@@ -113,7 +113,7 @@ class KWP2000StarTransportCAN(Transport):
         try:
             # Build STAR frame from payload
             star_frame = build_frame(data)
-            self.logger.debug(f"Sending STAR frame: {star_frame.hex()}")
+            self.logger.error(f"Sending STAR frame: {star_frame.hex()}")
 
             # Send frame through ISO-TP connection
             self._isotp_connection.send(star_frame)
