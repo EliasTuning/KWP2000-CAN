@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional
 
-from tp20.constants import (
+from .constants import (
     CAN_ID_SETUP_REQUEST,
     CAN_ID_SETUP_RESPONSE_BASE,
     DEFAULT_RX_ID,
@@ -23,13 +23,13 @@ from tp20.constants import (
     OPCODE_BREAK,
     OPCODE_DISCONNECT,
 )
-from tp20.exceptions import (
+from .exceptions import (
     TP20ChannelException,
     TP20DisconnectedException,
     TP20Exception,
     TP20TimeoutException,
 )
-from tp20.frames import (
+from .frames import (
     build_setup_request,
     parse_setup_response,
     build_parameters_request,

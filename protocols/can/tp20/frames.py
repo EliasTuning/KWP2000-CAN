@@ -2,7 +2,7 @@
 
 from typing import Tuple
 
-from tp20.constants import (
+from .constants import (
     OPCODE_SETUP_REQUEST,
     OPCODE_SETUP_POSITIVE_RESPONSE,
     OPCODE_SETUP_NEGATIVE_RESPONSE_MIN,
