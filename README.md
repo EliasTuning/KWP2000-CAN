@@ -27,21 +27,21 @@ pip install kwp2000-can
 The easiest way to get started is using the convenience wrapper that handles the full communication chain:
 
 ```python
-from kwp2000.can import KWP2000_TP20_J2534
+from protocols.kwp2000 import KWP2000_TP20_J2534
 
 # Initialize and connect to ECU
 with KWP2000_TP20_J2534() as client:
-    # Start extended diagnostic session
-    response = client.startDiagnosticSession(session_type=0x89)
-    print(f"Session started: {response}")
-    
-    # Read data by local identifier
-    data = client.readDataByLocalIdentifier(local_identifier=0x01)
-    print(f"Data read: {data}")
-    
-    # Start a routine
-    routine_result = client.start_routine(routine_id=0x1234)
-    print(f"Routine result: {routine_result}")
+  # Start extended diagnostic session
+  response = client.startDiagnosticSession(session_type=0x89)
+  print(f"Session started: {response}")
+
+  # Read data by local identifier
+  data = client.readDataByLocalIdentifier(local_identifier=0x01)
+  print(f"Data read: {data}")
+
+  # Start a routine
+  routine_result = client.start_routine(routine_id=0x1234)
+  print(f"Routine result: {routine_result}")
 ```
 
 ### Advanced Usage
@@ -49,22 +49,22 @@ with KWP2000_TP20_J2534() as client:
 For more control, you can build the communication chain manually:
 
 ```python
-from j2534.can_connection import J2534CanConnection
+from interface.j2534 import J2534CanConnection
 from tp20.transport import TP20Transport
-from kwp2000.client import KWP2000Client
+from protocols.kwp2000 import KWP2000Client
 
 # Create CAN connection
 can_conn = J2534CanConnection(
-    dll_path=None,  # Auto-detect J2534 DLL
-    baudrate=500000
+  dll_path=None,  # Auto-detect J2534 DLL
+  baudrate=500000
 )
 
 # Create TP20 transport
 tp20 = TP20Transport(
-    can_connection=can_conn,
-    dest=0x01,      # ECU logical address
-    rx_id=0x300,    # RX CAN ID
-    tx_id=0x740     # TX CAN ID
+  can_connection=can_conn,
+  dest=0x01,  # ECU logical address
+  rx_id=0x300,  # RX CAN ID
+  tx_id=0x740  # TX CAN ID
 )
 
 # Create KWP2000 client
@@ -72,9 +72,9 @@ client = KWP2000Client(tp20)
 
 # Use context managers
 with tp20:
-    with client:
-        response = client.startDiagnosticSession(session_type=0x89)
-        print(response)
+  with client:
+    response = client.startDiagnosticSession(session_type=0x89)
+    print(response)
 ```
 
 ## Protocol Support

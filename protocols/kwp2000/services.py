@@ -2,9 +2,9 @@
 
 from typing import Optional
 from dataclasses import dataclass
-from kwp2000.request import Request
-from kwp2000.response import Response
-from kwp2000.constants import (
+from protocols.kwp2000 import Request
+from protocols.kwp2000 import Response
+from protocols.kwp2000 import (
     SERVICE_START_COMMUNICATION,
     SERVICE_STOP_COMMUNICATION,
     SERVICE_ACCESS_TIMING_PARAMETER,
@@ -399,7 +399,7 @@ class AccessTimingParameter(ServiceBase):
             Request object
         """
         if timing_parameters is None:
-            from kwp2000.constants import TIMING_PARAMETER_STANDARD
+            from protocols.kwp2000 import TIMING_PARAMETER_STANDARD
             timing_parameters = TIMING_PARAMETER_STANDARD
         
         return cls.make_request(

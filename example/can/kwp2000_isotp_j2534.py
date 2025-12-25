@@ -8,12 +8,12 @@ using J2534CanConnection.
 import time
 
 # Example usage:
-from kwp2000 import KWP2000Client
-from kwp2000_star_can.transport import KWP2000StarTransportCAN
+from protocols.kwp2000 import KWP2000Client
+from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
 
 if __name__ == "__main__":
 
-    from j2534.can_connection import J2534CanConnection
+    from interface.j2534 import J2534CanConnection
 
     conn = J2534CanConnection(dll_path=r'C:\Program Files (x86)\OpenECU\OpenPort 2.0\drivers\openport 2.0\op20pt32.dll')
 

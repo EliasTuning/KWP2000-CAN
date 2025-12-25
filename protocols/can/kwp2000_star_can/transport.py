@@ -3,9 +3,9 @@
 import time
 import logging
 from typing import Optional
-from kwp2000.transport import Transport
-from kwp2000.exceptions import TransportException, TimeoutException
-from kwp2000.constants import TimingParameters, TIMING_PARAMETER_STANDARD
+from protocols.kwp2000 import Transport
+from protocols.kwp2000 import TransportException, TimeoutException
+from protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
 from .constants import TARGET_ADDR, SRC_ADDR
 
 

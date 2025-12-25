@@ -8,25 +8,9 @@ similar in API design to KWP2000.
 from ds2.client import DS2Client
 from ds2.transport import Transport, MockTransport
 from ds2.request import Request
-from ds2.response import Response
+from protocols.serial.ds2.response import Response
 from ds2 import services
 from ds2 import exceptions
-from ds2.constants import (
-    MOTRONIC,
-    AUTOMATIC_TRANSMISSION,
-    IKE,
-    LCM,
-    CMD_SET_ANALOG,
-    CMD_READ_MEMORY,
-    CMD_WRITE_MEMORY,
-    CMD_ACTIVATE_TEST,
-    CMD_DEACTIVATE_TEST,
-    MEMORY_TYPE_ROM,
-    MEMORY_TYPE_EEPROM,
-    MEMORY_TYPE_INTERNAL_RAM,
-    MEMORY_TYPE_EXTERNAL_RAM,
-    MEMORY_TYPE_DPRAM,
-)
 
 __version__ = "0.1.0"
 

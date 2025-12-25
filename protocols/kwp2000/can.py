@@ -1,9 +1,9 @@
 """J2534 TP20 KWP2000 convenience wrapper."""
 
 from typing import Optional
-from j2534.can_connection import J2534CanConnection
+from interface.j2534 import J2534CanConnection
 from tp20.transport import TP20Transport
-from kwp2000.client import KWP2000Client
+from protocols.kwp2000 import KWP2000Client
 
 
 class KWP2000_TP20_J2534:

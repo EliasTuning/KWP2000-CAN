@@ -6,8 +6,8 @@ import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional
-from kwp2000.transport import Transport
-from tp20.can_connection import CanConnection
+from protocols.kwp2000 import Transport
+from protocols.can.tp20.can_connection import CanConnection
 from tp20.constants import (
     CAN_ID_SETUP_REQUEST,
     CAN_ID_SETUP_RESPONSE_BASE,

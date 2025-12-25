@@ -1,9 +1,8 @@
 """Service definitions for DS2."""
 
-from typing import Optional
 from dataclasses import dataclass
 from ds2.request import Request
-from ds2.response import Response
+from protocols.serial.ds2.response import Response
 from ds2.constants import (
     CMD_READ_MEMORY,
     CMD_WRITE_MEMORY,

@@ -1,6 +1,6 @@
 """Exception classes for KWP2000 library."""
 
-from kwp2000.constants import NEGATIVE_RESPONSE_CODES
+from protocols.kwp2000 import NEGATIVE_RESPONSE_CODES
 
 
 class KWP2000Exception(Exception):

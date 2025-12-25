@@ -3,7 +3,6 @@ Pytest tests for normal flow KWP2000 communication over TP20 transport protocol.
 Tests diagnostic session start and data reading functionality.
 """
 import sys
-import importlib
 from pathlib import Path
 
 # Calculate paths
@@ -35,7 +34,7 @@ for module_name in modules_to_clear:
 
 # Import from project root packages
 from tp20 import TP20Transport
-from kwp2000 import KWP2000Client
+from protocols.kwp2000 import KWP2000Client
 
 # Add tests directory to path for mockup_can import (after main imports)
 test_dir_str = str(test_dir)

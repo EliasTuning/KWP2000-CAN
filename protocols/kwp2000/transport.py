@@ -2,8 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional
-import time
-from kwp2000.exceptions import TimeoutException, TransportException
+from protocols.kwp2000 import TransportException
 
 
 class Transport(ABC):

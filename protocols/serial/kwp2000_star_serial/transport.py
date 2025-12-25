@@ -3,12 +3,12 @@
 import time
 import logging
 from typing import Optional, List
-from kwp2000.transport import Transport
-from kwp2000.exceptions import TransportException, TimeoutException, NegativeResponseException
-from kwp2000.constants import TimingParameters, TIMING_PARAMETER_STANDARD
+from protocols.kwp2000 import Transport
+from protocols.kwp2000 import TransportException, TimeoutException, NegativeResponseException
+from protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
 from .frames import build_frame, parse_frame
 from .exceptions import InvalidChecksumException, InvalidFrameException
-from comport import ComportTransport
+from interface.serial import ComportTransport
 
 try:
     import serial
@@ -275,7 +275,7 @@ class KWP2000StarTransport(Transport):
                     
                     # Send TesterPresent request with response required
                     try:
-                        from kwp2000 import services
+                        from protocols.kwp2000 import services
                         response = client.tester_present(
                             response_required=services.TesterPresent.ResponseRequired.YES,
                             timeout=timeout

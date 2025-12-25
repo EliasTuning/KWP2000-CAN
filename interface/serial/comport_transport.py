@@ -1,10 +1,9 @@
 """COM port transport layer for KWP2000 communication."""
 
-import time
 import logging
 from typing import Optional
-from kwp2000.transport import Transport
-from kwp2000.exceptions import TimeoutException, TransportException
+from protocols.kwp2000 import Transport
+from protocols.kwp2000 import TransportException
 
 try:
     import serial

@@ -4,15 +4,13 @@ This example demonstrates how to use the COM port transport for KWP2000 communic
 For production use, import directly from the package:
 
     from kwp2000.client import KWP2000Client
-    from comport import ComportTransport
+    from serial import ComportTransport
 """
 
-import time
 import logging
 
-from kwp2000.client import KWP2000Client
-from kwp2000 import services
-from comport import ComportTransport
+from protocols.kwp2000 import KWP2000Client
+from interface.serial import ComportTransport
 
 # Configure logging to see debug messages
 logging.basicConfig(
