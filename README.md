@@ -42,61 +42,6 @@ For serial stacks install pyserial if you do not have it already:
 pip install pyserial
 ```
 
-## Quick Start
-
-The easiest way to get started is using the convenience wrapper that handles the full communication chain:
-
-```python
-from protocols.kwp2000.can import KWP2000_TP20_J2534
-
-# Initialize and connect to ECU
-with KWP2000_TP20_J2534() as client:
-  # Start extended diagnostic session
-  response = client.startDiagnosticSession(session_type=0x89)
-  print(f"Session started: {response}")
-
-  # Read data by local identifier
-  data = client.readDataByLocalIdentifier(local_identifier=0x01)
-  print(f"Data read: {data}")
-
-  # Start a routine
-  routine_result = client.start_routine(routine_id=0x1234)
-  print(f"Routine result: {routine_result}")
-```
-
-### Advanced Usage
-
-For more control, you can build the communication chain manually:
-
-```python
-from interface.j2534 import J2534CanConnection
-from tp20.transport import TP20Transport
-from protocols.kwp2000 import KWP2000Client
-
-# Create CAN connection
-can_conn = J2534CanConnection(
-  dll_path=None,  # Auto-detect J2534 DLL
-  baudrate=500000
-)
-
-# Create TP20 transport
-tp20 = TP20Transport(
-  can_connection=can_conn,
-  dest=0x01,  # ECU logical address
-  rx_id=0x300,  # RX CAN ID
-  tx_id=0x740  # TX CAN ID
-)
-
-# Create KWP2000 client
-client = KWP2000Client(tp20)
-
-# Use context managers
-with tp20:
-  with client:
-    response = client.startDiagnosticSession(session_type=0x89)
-    print(response)
-```
-
 ## Protocol Support
 
 ### Stacks at a Glance
@@ -116,28 +61,14 @@ with tp20:
 
 ### KWP2000 Services (implemented)
 
-| Service | ID |
-|---------|----|
-| Start Communication | 0x81 |
-| Stop Communication | 0x82 |
-| Start Diagnostic Session | 0x10 |
-| Stop Diagnostic Session | 0x20 |
-| ECU Reset | 0x11 |
-| Read Data By Local Identifier | 0x21 |
-| Read Data By Identifier | 0x22 |
-| Write Data By Local Identifier | 0x3B |
-| Routine Control | 0x31 |
-| Request Routine Results | 0x33 |
-| Access Timing Parameter | 0x83 |
-| Send Data | 0x36 |
+See the full list with notes in [services.md](services.md).
 
-DS2 services mirror the original library (`Ident`, `ReadMemory`, `WriteMemory`, `ActivateTest`, etc.) and are exposed through `protocols.serial.ds2.services`.
 
 ## Examples
 
 See the `example/` directory for complete usage examples:
 
-- `kwp2000_tp20_j2534.py`: Convenience wrapper example
+- `kwp2000_tp20_j2534.py`: VAG TP20
 - `kwp2000_star_j2534.py`: KWP2000-STAR over CAN (J2534)
 - `kwp2000_star_comport.py`: KWP2000-STAR over serial
 - `ds2_comport.py`: DS2 over serial
