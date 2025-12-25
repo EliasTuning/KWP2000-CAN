@@ -27,7 +27,7 @@ pip install kwp2000-can
 The easiest way to get started is using the convenience wrapper that handles the full communication chain:
 
 ```python
-from protocols.kwp2000 import KWP2000_TP20_J2534
+from protocols.kwp2000.can import KWP2000_TP20_J2534
 
 # Initialize and connect to ECU
 with KWP2000_TP20_J2534() as client:

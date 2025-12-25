@@ -13,26 +13,8 @@ from .exceptions import (
 from .client import KWP2000Client
 from . import services
 
-# Lazy import for can module to avoid circular imports
-# KWP2000_TP20_J2534 will be imported on-demand
-_can_module = None
-_KWP2000_TP20_J2534 = None
-
-def __getattr__(name):
-    """Lazy import for can module to avoid circular imports."""
-    if name == "KWP2000_TP20_J2534":
-        global _KWP2000_TP20_J2534
-        if _KWP2000_TP20_J2534 is None:
-            from .can import KWP2000_TP20_J2534
-            _KWP2000_TP20_J2534 = KWP2000_TP20_J2534
-        return _KWP2000_TP20_J2534
-    if name == "can":
-        global _can_module
-        if _can_module is None:
-            from . import can
-            _can_module = can
-        return _can_module
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# Note: 'can' module and 'KWP2000_TP20_J2534' are not imported here to avoid circular imports.
+# Import them directly: from protocols.kwp2000.can import KWP2000_TP20_J2534
 
 __all__ = [
     # Timing parameters
@@ -50,10 +32,7 @@ __all__ = [
     "TransportException",
     # Client
     "KWP2000Client",
-    # Convenience wrappers
-    "KWP2000_TP20_J2534",
     # Modules
-    "can",
     "services",
 ]
 

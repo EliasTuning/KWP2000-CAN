@@ -2,7 +2,6 @@ import csv
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from can import Message
 from protocols.can.tp20 import TP20Exception
 
 from interface.base_can_connection import CanConnection
@@ -57,7 +56,6 @@ class MockupCan(CanConnection):
         """
         self.csv_filename = csv_filename
         self.messages: List[CanMessage] = []
-        self.received_messages: List[Message] = []
         # Single stack of messages for both send and receive
         self.message_stack: List[CanMessage] = []
         self._is_open = False
