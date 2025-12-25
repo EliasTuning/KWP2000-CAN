@@ -1,20 +1,16 @@
 import ctypes
+import logging
 from ctypes import (
     Structure,
     WINFUNCTYPE,
     POINTER,
-    cast,
     c_long,
     c_void_p,
     c_ulong,
     byref,
     pointer,
 )
-
-import pprint
 from enum import Enum
-
-import logging
 
 
 class PASSTHRU_MSG(Structure):

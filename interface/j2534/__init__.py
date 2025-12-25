@@ -5,8 +5,6 @@ A Python library for J2534 Pass-Thru interface communication,
 providing CAN bus access for automotive diagnostics.
 """
 
-from interface.j2534 import J2534CanConnection
-
 __version__ = "0.1.0"
 
 __all__ = [

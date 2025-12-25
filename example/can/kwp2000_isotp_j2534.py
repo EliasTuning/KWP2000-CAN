@@ -7,9 +7,9 @@ using J2534CanConnection.
 # Import from the package (works after pip install)
 import time
 
+from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
 # Example usage:
 from protocols.kwp2000 import KWP2000Client
-from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
 
 if __name__ == "__main__":
 

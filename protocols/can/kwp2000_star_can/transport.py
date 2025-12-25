@@ -1,11 +1,12 @@
 """Transport layer for KWP2000-STAR protocol over CAN bus."""
 
-import time
 import logging
+import time
 from typing import Optional
+
+from protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
 from protocols.kwp2000 import Transport
 from protocols.kwp2000 import TransportException, TimeoutException
-from protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
 from .constants import TARGET_ADDR, SRC_ADDR
 
 

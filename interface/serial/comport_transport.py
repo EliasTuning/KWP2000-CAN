@@ -2,6 +2,7 @@
 
 import logging
 from typing import Optional
+
 from protocols.kwp2000 import Transport
 from protocols.kwp2000 import TransportException
 

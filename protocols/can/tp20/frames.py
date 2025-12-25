@@ -1,6 +1,7 @@
 """Frame building and parsing for TP20 protocol."""
 
-from typing import Optional, Tuple
+from typing import Tuple
+
 from tp20.constants import (
     OPCODE_SETUP_REQUEST,
     OPCODE_SETUP_POSITIVE_RESPONSE,

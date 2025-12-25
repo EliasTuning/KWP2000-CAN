@@ -6,8 +6,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional
-from protocols.kwp2000 import Transport
-from protocols.can.tp20.can_connection import CanConnection
+
 from tp20.constants import (
     CAN_ID_SETUP_REQUEST,
     CAN_ID_SETUP_RESPONSE_BASE,
@@ -24,6 +23,12 @@ from tp20.constants import (
     OPCODE_BREAK,
     OPCODE_DISCONNECT,
 )
+from tp20.exceptions import (
+    TP20ChannelException,
+    TP20DisconnectedException,
+    TP20Exception,
+    TP20TimeoutException,
+)
 from tp20.frames import (
     build_setup_request,
     parse_setup_response,
@@ -34,12 +39,9 @@ from tp20.frames import (
     build_disconnect,
     build_channel_test,
 )
-from tp20.exceptions import (
-    TP20ChannelException,
-    TP20DisconnectedException,
-    TP20Exception,
-    TP20TimeoutException,
-)
+
+from protocols.can.tp20.can_connection import CanConnection
+from protocols.kwp2000 import Transport
 
 
 class _CommandType(Enum):

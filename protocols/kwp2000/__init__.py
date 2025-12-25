@@ -6,8 +6,8 @@ similar in API design to udsoncan.
 """
 
 from protocols.kwp2000 import KWP2000Client
-from protocols.kwp2000 import services
 from protocols.kwp2000 import exceptions
+from protocols.kwp2000 import services
 
 __version__ = "0.1.0"
 

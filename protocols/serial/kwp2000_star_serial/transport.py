@@ -1,14 +1,15 @@
 """Transport layer for KWP2000-STAR protocol over COM port."""
 
-import time
 import logging
+import time
 from typing import Optional, List
+
+from interface.serial import ComportTransport
+from protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
 from protocols.kwp2000 import Transport
 from protocols.kwp2000 import TransportException, TimeoutException, NegativeResponseException
-from protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
-from .frames import build_frame, parse_frame
 from .exceptions import InvalidChecksumException, InvalidFrameException
-from interface.serial import ComportTransport
+from .frames import build_frame, parse_frame
 
 try:
     import serial

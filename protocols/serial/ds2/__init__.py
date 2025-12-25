@@ -6,11 +6,9 @@ similar in API design to KWP2000.
 """
 
 from ds2.client import DS2Client
-from ds2.transport import Transport, MockTransport
 from ds2.request import Request
 from protocols.serial.ds2.response import Response
 from ds2 import services
-from ds2 import exceptions
 
 __version__ = "0.1.0"
 

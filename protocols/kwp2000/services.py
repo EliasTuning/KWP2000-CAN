@@ -1,7 +1,8 @@
 """Service definitions for KWP2000."""
 
-from typing import Optional
 from dataclasses import dataclass
+from typing import Optional
+
 from protocols.kwp2000 import Request
 from protocols.kwp2000 import Response
 from protocols.kwp2000 import (

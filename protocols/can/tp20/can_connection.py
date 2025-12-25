@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
+
 from tp20.exceptions import TP20Exception
 
 

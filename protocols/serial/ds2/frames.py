@@ -1,6 +1,7 @@
 """Frame parsing and building for DS2 protocol."""
 
-from typing import Optional, Tuple
+from typing import Tuple
+
 from ds2.exceptions import InvalidChecksumException
 
 

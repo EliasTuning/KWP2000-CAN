@@ -1,10 +1,9 @@
-from .j2534_connection import J2534Connection
+import sys
 
 import can
-import struct
-import time
-import sys
-from collections import namedtuple
+
+from .j2534_connection import J2534Connection
+
 
 class CAN_MESSAGE():
     def __init__(self,id,data):

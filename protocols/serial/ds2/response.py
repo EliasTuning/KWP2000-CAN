@@ -1,7 +1,7 @@
 """Response class for DS2."""
 
 from typing import Optional
-from ds2.frames import parse_frame
+
 from ds2.constants import (
     STATUS_OKAY,
     STATUS_BUSY,
@@ -18,6 +18,7 @@ from ds2.exceptions import (
     InvalidCommand,
     ProtocolError,
 )
+from ds2.frames import parse_frame
 
 
 class Response:

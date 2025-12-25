@@ -1,17 +1,17 @@
+import ctypes
+import logging
 import queue
 import threading
-import logging
 
-from .j2534 import J2534
-from .j2534 import Protocol_ID
-from .j2534 import Ioctl_ID
-from .j2534 import Ioctl_Flags
-from .j2534 import Ioctl_Parameters
-from .j2534 import SCONFIG
-from .j2534 import Error_ID
 import can
 
-import ctypes
+from .j2534 import Error_ID
+from .j2534 import Ioctl_Flags
+from .j2534 import Ioctl_ID
+from .j2534 import Ioctl_Parameters
+from .j2534 import J2534
+from .j2534 import Protocol_ID
+from .j2534 import SCONFIG
 
 
 class J2534Connection():

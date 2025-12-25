@@ -1,10 +1,10 @@
 """COM port transport layer for DS2 communication."""
 
-import time
 import logging
 from typing import Optional
+
+from ds2.exceptions import TransportException
 from ds2.transport import Transport
-from ds2.exceptions import TimeoutException, TransportException
 
 try:
     import serial

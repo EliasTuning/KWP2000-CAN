@@ -1,9 +1,10 @@
 """Response class for KWP2000."""
 
 from typing import Optional
-from protocols.kwp2000 import parse_frame
-from protocols.kwp2000 import RESPONSE_POSITIVE, RESPONSE_NEGATIVE
+
 from protocols.kwp2000 import InvalidFrameException, NegativeResponseException
+from protocols.kwp2000 import RESPONSE_POSITIVE, RESPONSE_NEGATIVE
+from protocols.kwp2000 import parse_frame
 
 
 class Response:

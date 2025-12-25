@@ -2,7 +2,8 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional
-from ds2.exceptions import TimeoutException, TransportException
+
+from ds2.exceptions import TransportException
 
 
 class Transport(ABC):

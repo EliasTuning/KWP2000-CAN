@@ -1,9 +1,11 @@
 import csv
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+
 from can import Message
-from protocols.can.tp20.can_connection import CanConnection
 from tp20.exceptions import TP20Exception
+
+from protocols.can.tp20.can_connection import CanConnection
 
 
 @dataclass

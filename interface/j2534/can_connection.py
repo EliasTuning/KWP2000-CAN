@@ -1,12 +1,11 @@
 """J2534 CAN connection adapter for TP20."""
 
-import queue
-import time
-from typing import Optional, Tuple
 import logging
+from typing import Optional, Tuple
+
+from tp20.exceptions import TP20Exception
 
 from protocols.can.tp20.can_connection import CanConnection
-from tp20.exceptions import TP20Exception
 from .j2534_connection import J2534Connection
 
 
