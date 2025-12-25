@@ -1,60 +1,37 @@
-import csv
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable, Union
 
 from protocols.can.tp20 import TP20Exception
 
 from interface.base_can_connection import CanConnection
 
-
-@dataclass
-class CanMessage:
-    """Dataclass representing a CAN message from the CSV."""
-    can_id: int
-    data_bytes: bytes
-    type: str
-    description: str
-    sender: str
-
-    @classmethod
-    def from_csv_row(cls, row: dict) -> 'CanMessage':
-        """Create a CanMessage instance from a CSV row."""
-        # Parse CAN ID (hex string)
-        can_id = int(row['CAN ID'], 16)
-        
-        # Parse data bytes (hex string like "01 C0 00 10 00 03 01")
-        hex_string = row['Data Bytes'].strip()
-        if hex_string:
-            # Remove spaces and convert hex string to bytes
-            hex_clean = hex_string.replace(' ', '')
-            data_bytes = bytes.fromhex(hex_clean)
-        else:
-            data_bytes = b''
-        
-        return cls(
-            can_id=can_id,
-            data_bytes=data_bytes,
-            type=row['Type'],
-            description=row['Description'],
-            sender=row['Sender']
-        )
+# Import CanMessage and parsers from message_parsers module
+try:
+    from .message_parsers import CanMessage, parse_csv_messages
+except ImportError:
+    # Fallback for direct import
+    from message_parsers import CanMessage, parse_csv_messages
 
 
 class MockupCan(CanConnection):
     """
-    Mock CAN interface that reads messages from CSV and simulates send/receive.
+    Mock CAN interface that reads messages from a parser function and simulates send/receive.
     
-    Implements the CanConnection interface for use with TP20Transport.
+    Implements the CanConnection interface for use with TP20Transport and other CAN protocols.
+    
+    The parser function should return a list of CanMessage instances in the order they should
+    be processed (both sent and received).
     """
     
-    def __init__(self, csv_filename: str):
+    def __init__(self, parser: Union[Callable[[], List[CanMessage]], str]):
         """
-        Initialize MockupCan with messages from CSV file.
+        Initialize MockupCan with messages from a parser function or CSV filename.
         
         Args:
-            csv_filename: Path to the CSV file containing CAN messages
+            parser: Either:
+                - A callable that returns List[CanMessage] (e.g., lambda: parse_csv_messages('file.csv'))
+                - A string filename (for backward compatibility, treated as CSV filename)
         """
-        self.csv_filename = csv_filename
+        self.parser = parser
         self.messages: List[CanMessage] = []
         # Single stack of messages for both send and receive
         self.message_stack: List[CanMessage] = []
@@ -62,22 +39,22 @@ class MockupCan(CanConnection):
         self._load_messages()
     
     def _load_messages(self):
-        """Load CAN messages from CSV file."""
+        """Load CAN messages using the parser function."""
         try:
-            with open(self.csv_filename, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    # Skip empty rows
-                    if not row.get('CAN ID') or not row.get('CAN ID').strip():
-                        continue
-                    message = CanMessage.from_csv_row(row)
-                    self.messages.append(message)
-                    # Add to message stack (maintain order)
-                    self.message_stack.append(message)
-        except FileNotFoundError:
-            raise TP20Exception(f"CSV file not found: {self.csv_filename}")
+            # Backward compatibility: if parser is a string, treat it as CSV filename
+            if isinstance(self.parser, str):
+                messages = parse_csv_messages(self.parser)
+            else:
+                # Parser is a callable
+                messages = self.parser()
+            
+            self.messages = messages
+            # Add to message stack (maintain order)
+            self.message_stack = messages.copy()
+        except FileNotFoundError as e:
+            raise TP20Exception(f"File not found: {e}")
         except Exception as e:
-            raise TP20Exception(f"Error loading CSV file: {e}")
+            raise TP20Exception(f"Error loading messages: {e}")
     
     def open(self) -> None:
         """Open the CAN connection and reload messages."""
