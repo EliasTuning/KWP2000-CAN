@@ -103,8 +103,8 @@ with tp20:
 
 | Stack | Transport | Hardware | Module / Entry point | Notes |
 |-------|-----------|----------|----------------------|-------|
-| KWP2000 over TP20 | CAN (ISO-TP via TP20) | J2534 Pass-Thru | `protocols.kwp2000.can.KWP2000_TP20_J2534` | VAG-style TP20 framing, auto DLL detection |
-| KWP2000-STAR (BMW) | CAN (BMW ISO-TP + addr) | J2534 / any CAN implementing `send_can_frame`/`recv_can_frame` | `protocols.can.kwp2000_star_can.transport.KWP2000StarTransportCAN` | Uses address byte + ISO-TP PCI; flow control handled for you |
+| KWP2000 over TP20 | CAN  | J2534 | `protocols.kwp2000.can.KWP2000_TP20_J2534` | VAG TP20 framing (used ~2004–2010, pre-UDS); auto DLL detection |
+| KWP2000-STAR (BMW) | CAN | J2534 | Uses address byte + ISO-TP PCI; flow control handled for you |
 | KWP2000-STAR (BMW) | Serial | pyserial COM port | `protocols.serial.kwp2000_star_serial.transport.KWP2000StarTransport` | Includes baudrate scan helper and checksum handling |
 | DS2 (BMW) | Serial | pyserial COM port | `protocols.serial.ds2` (`ComportTransport`, `DS2Client`) | Classic BMW DS2 framing with echo + reply handling |
 
