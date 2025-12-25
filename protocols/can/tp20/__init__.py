@@ -6,6 +6,16 @@ Sends and receives byte data directly over CAN using TP20 protocol.
 """
 
 from interface.base_can_connection import CanConnection, MockCanConnection
+from .transport import TP20Transport
+from .exceptions import (
+    TP20Exception,
+    TP20TimeoutException,
+    TP20ChannelException,
+    TP20InvalidFrameException,
+    TP20NegativeResponseException,
+    TP20DisconnectedException,
+)
+from .timing import TimingParameter, TimingUnits
 
 __version__ = "0.1.0"
 
@@ -15,5 +25,11 @@ __all__ = [
     'MockCanConnection',
     'TimingParameter',
     'TimingUnits',
+    'TP20Exception',
+    'TP20TimeoutException',
+    'TP20ChannelException',
+    'TP20InvalidFrameException',
+    'TP20NegativeResponseException',
+    'TP20DisconnectedException',
 ]
 

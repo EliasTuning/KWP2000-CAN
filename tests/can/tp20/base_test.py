@@ -10,7 +10,7 @@ from typing import Optional
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from tp20 import TP20Transport
+from protocols.can.tp20 import TP20Transport
 from protocols.kwp2000 import KWP2000Client
 
 # Add tests directory to path for mockup_can import

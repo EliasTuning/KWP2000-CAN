@@ -33,7 +33,7 @@ for module_name in modules_to_clear:
         del sys.modules[module_name]
 
 # Import from project root packages
-from tp20 import TP20Transport
+from protocols.can.tp20 import TP20Transport
 from protocols.kwp2000 import KWP2000Client
 
 # Add tests directory to path for mockup_can import (after main imports)

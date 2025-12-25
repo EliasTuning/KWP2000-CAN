@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from can import Message
-from tp20.exceptions import TP20Exception
+from protocols.can.tp20 import TP20Exception
 
 from interface.base_can_connection import CanConnection
 
