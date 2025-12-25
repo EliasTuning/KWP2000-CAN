@@ -108,6 +108,12 @@ with tp20:
 | KWP2000-STAR (BMW) | Serial | pyserial COM port | `protocols.serial.kwp2000_star_serial.transport.KWP2000StarTransport` | Includes baudrate scan helper and checksum handling |
 | DS2 (BMW) | Serial | pyserial COM port | `protocols.serial.ds2` (`ComportTransport`, `DS2Client`) | Classic BMW DS2 framing with echo + reply handling |
 
+### BMW protocol specifics
+
+- KWP2000 (BMW) typically runs at **10400 baud** with an additive checksum.
+- KWP2000\* / STAR uses **9600 baud** with an **XOR checksum**.
+- BMW-FAST is essentially KWP2000 at **115200 baud** (same framing, higher speed).
+
 ### KWP2000 Services (implemented)
 
 | Service | ID |
