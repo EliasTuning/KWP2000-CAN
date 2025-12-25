@@ -49,8 +49,5 @@ Repository = "https://github.com/yourusername/KWP2000-CAN"
 Issues = "https://github.com/yourusername/KWP2000-CAN/issues"
 
 [tool.setuptools]
-packages = ["kwp2000", "kwp2000_star", "ds2", "comport", "tp20", "j2534"]
-
-[tool.setuptools.package-data]
-"*" = ["py.typed"]
+packages = { find = { exclude = ["tests*", "example*", "dist*", "venv*"] } }
 

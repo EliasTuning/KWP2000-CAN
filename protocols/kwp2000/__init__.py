@@ -1,6 +1,19 @@
 """KWP2000 protocol implementation."""
 
-from .constants import TimingParameters, TIMING_PARAMETER_STANDARD, TIMING_PARAMETER_MINIMAL
+from .constants import (
+    TimingParameters,
+    TIMING_PARAMETER_STANDARD,
+    TIMING_PARAMETER_MINIMAL,
+    BAUDRATE_9600,
+    BAUDRATE_19200,
+    BAUDRATE_38400,
+    BAUDRATE_57600,
+    BAUDRATE_115200,
+    BAUDRATE_125000,
+    BAUDRATE_10400,
+    BAUDRATE_20800,
+    baudrate_identifier_to_value,
+)
 from .transport import Transport
 from .exceptions import (
     KWP2000Exception,
@@ -21,6 +34,16 @@ __all__ = [
     "TimingParameters",
     "TIMING_PARAMETER_STANDARD",
     "TIMING_PARAMETER_MINIMAL",
+    # Baudrate helpers
+    "BAUDRATE_9600",
+    "BAUDRATE_19200",
+    "BAUDRATE_38400",
+    "BAUDRATE_57600",
+    "BAUDRATE_115200",
+    "BAUDRATE_125000",
+    "BAUDRATE_10400",
+    "BAUDRATE_20800",
+    "baudrate_identifier_to_value",
     # Transport
     "Transport",
     # Exceptions

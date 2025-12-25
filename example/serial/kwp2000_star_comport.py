@@ -8,7 +8,7 @@ the serial baudrate accordingly.
 import logging
 import time
 
-from kwp2000_star.transport import KWP2000StarTransport
+from protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
 
 from protocols.kwp2000 import (
     BAUDRATE_115200,

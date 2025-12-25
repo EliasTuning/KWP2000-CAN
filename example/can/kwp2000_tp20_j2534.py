@@ -3,7 +3,7 @@
 This example demonstrates how to use the convenience wrapper.
 For production use, import directly from the package:
 
-    from kwp2000.can import KWP2000_TP20_J2534
+    from protocols.kwp2000.can import KWP2000_TP20_J2534
 """
 
 # Import from the package (works after pip install)
