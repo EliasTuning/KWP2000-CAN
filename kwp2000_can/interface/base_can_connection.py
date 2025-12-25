@@ -1,7 +1,23 @@
 """CAN connection interface for TP20."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Imported only for type checking to avoid circular imports at runtime
+    from kwp2000_can.protocols.can.tp20.exceptions import TP20Exception
+
+
+def _tp20_exception(message: str) -> "TP20Exception":
+    """
+    Lazily import TP20Exception to avoid circular imports during module load.
+    
+    Args:
+        message: Error message to propagate.
+    """
+    from kwp2000_can.protocols.can.tp20.exceptions import TP20Exception
+
+    return TP20Exception(message)
 
 
 
@@ -89,9 +105,9 @@ class MockCanConnection(CanConnection):
     def send_can_frame(self, can_id: int, data: bytes) -> None:
         """Store sent CAN frame."""
         if not self._is_open:
-            raise TP20Exception("CAN connection not open")
+            raise _tp20_exception("CAN connection not open")
         if len(data) > 8:
-            raise TP20Exception(f"CAN frame data too long: {len(data)} bytes (max 8)")
+            raise _tp20_exception(f"CAN frame data too long: {len(data)} bytes (max 8)")
         self._sent_frames.append((can_id, data))
     
     def recv_can_frame(self, timeout: float = 1.0) -> Optional[Tuple[int, bytes]]:
@@ -105,7 +121,7 @@ class MockCanConnection(CanConnection):
             Next frame from queue as (can_id, data), or None if queue is empty
         """
         if not self._is_open:
-            raise TP20Exception("CAN connection not open")
+            raise _tp20_exception("CAN connection not open")
         
         if self._response_queue:
             return self._response_queue.pop(0)
