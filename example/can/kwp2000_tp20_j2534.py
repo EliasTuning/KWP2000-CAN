@@ -9,7 +9,7 @@ For production use, import directly from the package:
 # Import from the package (works after pip install)
 import time
 
-from kwp2000.can import KWP2000_TP20_J2534
+from protocols.kwp2000 import KWP2000_TP20_J2534
 
 # Example usage:
 if __name__ == "__main__":

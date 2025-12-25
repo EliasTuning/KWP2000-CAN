@@ -7,13 +7,11 @@ For production use, import directly from the package:
     from ds2.comport_transport import ComportTransport
 """
 
-import time
 import logging
 
 from ds2.client import DS2Client
-from ds2 import services
-from ds2.constants import MOTRONIC
 from ds2.comport_transport import ComportTransport
+from ds2.constants import MOTRONIC
 
 try:
     import serial

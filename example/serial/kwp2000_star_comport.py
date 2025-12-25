@@ -2,18 +2,20 @@
 
 This example demonstrates how to use the COM port transport for KWP2000-STAR communication
 with the high-level KWP2000Client interface. It requests maximum baudrate (125k) and changes
-the comport baudrate accordingly.
+the serial baudrate accordingly.
 """
 
 import logging
 import time
-from kwp2000.client import KWP2000Client
+
 from kwp2000_star.transport import KWP2000StarTransport
-from kwp2000.constants import (
+
+from protocols.kwp2000 import (
     BAUDRATE_115200,
     baudrate_identifier_to_value,
     TIMING_PARAMETER_MINIMAL
 )
+from protocols.kwp2000 import KWP2000Client
 
 try:
     import serial
