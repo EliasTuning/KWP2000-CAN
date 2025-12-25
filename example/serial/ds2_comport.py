@@ -9,9 +9,7 @@ For production use, import directly from the package:
 
 import logging
 
-from ds2.client import DS2Client
-from ds2.comport_transport import ComportTransport
-from ds2.constants import MOTRONIC
+from kwp2000_can.protocols.serial.ds2 import DS2Client, ComportTransport, MOTRONIC
 
 try:
     import serial

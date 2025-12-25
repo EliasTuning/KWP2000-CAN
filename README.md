@@ -76,9 +76,9 @@ See the `example/` directory for complete usage examples:
 ### KWP2000-STAR over CAN (BMW)
 
 ```python
-from interface.j2534 import J2534CanConnection
-from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
-from protocols.kwp2000 import KWP2000Client
+from kwp2000_can.interface.j2534 import J2534CanConnection
+from kwp2000_can.protocols.can import KWP2000StarTransportCAN
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 conn = J2534CanConnection(baudrate=500000)
 transport = KWP2000StarTransportCAN(conn, rx_id=0x612, tx_id=0x6F1)
@@ -92,8 +92,8 @@ with transport, client:
 ### KWP2000-STAR over Serial
 
 ```python
-from protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
-from protocols.kwp2000 import KWP2000Client
+from kwp2000_can.protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 transport = KWP2000StarTransport(port="COM3", baudrate=9600)
 client = KWP2000Client(transport)
@@ -106,7 +106,7 @@ with transport, client:
 ### DS2 over Serial
 
 ```python
-from protocols.serial.ds2 import ComportTransport, DS2Client, services
+from kwp2000_can.protocols.serial.ds2 import ComportTransport, DS2Client, services
 
 transport = ComportTransport(port="COM3", baudrate=9600)
 

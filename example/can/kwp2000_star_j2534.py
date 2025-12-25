@@ -4,16 +4,15 @@ This example demonstrates how to use the KWP2000-STAR protocol over CAN bus
 using J2534CanConnection.
 """
 
-# Import from the package (works after pip install)
+# Import from the installed package (prefixed to avoid name clashes)
 import time
 
-from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
+from kwp2000_can.interface.j2534 import J2534CanConnection
+from kwp2000_can.protocols.can import KWP2000StarTransportCAN
 # Example usage:
-from protocols.kwp2000 import KWP2000Client
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 if __name__ == "__main__":
-
-    from interface.j2534 import J2534CanConnection
 
     conn = J2534CanConnection(dll_path=r'C:\Program Files (x86)\OpenECU\OpenPort 2.0\drivers\openport 2.0\op20pt32.dll')
 

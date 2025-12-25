@@ -8,14 +8,14 @@ the serial baudrate accordingly.
 import logging
 import time
 
-from protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
+from kwp2000_can.protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
 
-from protocols.kwp2000 import (
+from kwp2000_can.protocols.kwp2000 import (
     BAUDRATE_115200,
     baudrate_identifier_to_value,
     TIMING_PARAMETER_MINIMAL
 )
-from protocols.kwp2000 import KWP2000Client
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 try:
     import serial

@@ -6,10 +6,10 @@ For production use, import directly from the package:
     from protocols.kwp2000.can import KWP2000_TP20_J2534
 """
 
-# Import from the package (works after pip install)
+# Import from the package (works after pip install) with prefix to avoid clashes
 import time
 
-from protocols.kwp2000.can import KWP2000_TP20_J2534
+from kwp2000_can.protocols.kwp2000.can import KWP2000_TP20_J2534
 
 # Example usage:
 if __name__ == "__main__":

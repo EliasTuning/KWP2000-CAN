@@ -9,8 +9,8 @@ For production use, import directly from the package:
 
 import logging
 
-from interface.serial import ComportTransport
-from protocols.kwp2000 import KWP2000Client
+from kwp2000_can.interface.serial import ComportTransport
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 # Configure logging to see debug messages
 logging.basicConfig(
