@@ -43,10 +43,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/KWP2000-CAN"
-Documentation = "https://github.com/yourusername/KWP2000-CAN#readme"
-Repository = "https://github.com/yourusername/KWP2000-CAN"
-Issues = "https://github.com/yourusername/KWP2000-CAN/issues"
+Homepage = "https://github.com/EliasTuning/KWP2000-CAN"
+Documentation = "https://github.com/EliasTuning/KWP2000-CAN#readme"
+Repository = "https://github.com/EliasTuning/KWP2000-CAN"
+Issues = "https://github.com/EliasTuning/KWP2000-CAN/issues"
 
 [tool.setuptools]
 packages = { find = { exclude = ["tests*", "example*", "dist*", "venv*"] } }
