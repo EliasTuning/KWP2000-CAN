@@ -5,7 +5,6 @@ Tests STAR framing and diagnostic session functionality.
 import sys
 from pathlib import Path
 from typing import Optional
-from unittest.mock import patch
 
 # Calculate paths
 project_root = Path(__file__).parent.parent.parent.parent.resolve()
@@ -34,14 +33,14 @@ for module_name in modules_to_clear:
         del sys.modules[module_name]
 
 # Import from project root packages
-from protocols.kwp2000 import Transport, TransportException
-from protocols.kwp2000.client import KWP2000Client
-from protocols.kwp2000.constants import (
+from kwp2000_can.protocols.kwp2000 import Transport, TransportException
+from kwp2000_can.protocols.kwp2000.client import KWP2000Client
+from kwp2000_can.protocols.kwp2000.constants import (
     SERVICE_START_DIAGNOSTIC_SESSION,
     RESPONSE_POSITIVE
 )
-from protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
-from protocols.serial.kwp2000_star_serial.frames import build_frame, parse_frame
+from kwp2000_can.protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
+from kwp2000_can.protocols.serial.kwp2000_star_serial.frames import build_frame, parse_frame
 
 
 class MockComportTransport(Transport):

@@ -1,6 +1,5 @@
-"""Serial interface forwarders under kwp2000_can namespace."""
+"""COM port transport for KWP2000."""
 
-from interface.serial import *  # noqa: F401,F403
+from .comport_transport import ComportTransport
 
-__all__ = []
-
+__all__ = ['ComportTransport']

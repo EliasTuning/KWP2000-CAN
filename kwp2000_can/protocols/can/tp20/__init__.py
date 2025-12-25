@@ -5,7 +5,7 @@ A Python library for TP20 transport protocol over CAN bus.
 Sends and receives byte data directly over CAN using TP20 protocol.
 """
 
-from interface.base_can_connection import CanConnection, MockCanConnection
+from kwp2000_can.interface.base_can_connection import CanConnection, MockCanConnection
 from .transport import TP20Transport
 from .exceptions import (
     TP20Exception,

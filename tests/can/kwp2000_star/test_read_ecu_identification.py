@@ -34,8 +34,8 @@ for module_name in modules_to_clear:
         del sys.modules[module_name]
 
 # Import from project root packages
-from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
-from protocols.kwp2000 import KWP2000Client
+from kwp2000_can.protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 # Add tests/can directory to path for mockup_can import (after main imports)
 can_test_dir_str = str(can_test_dir)

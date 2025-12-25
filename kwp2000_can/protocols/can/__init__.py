@@ -1,6 +1,7 @@
-"""CAN protocol forwarders under kwp2000_can namespace."""
+"""CAN protocol transports and helpers."""
 
-from protocols.can import *  # noqa: F401,F403
+from .kwp2000_star_can import KWP2000StarTransportCAN
 
-__all__ = []
-
+__all__ = [
+    "KWP2000StarTransportCAN",
+]

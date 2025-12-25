@@ -40,8 +40,8 @@ from .frames import (
     build_channel_test,
 )
 
-from interface.base_can_connection import CanConnection
-from protocols.kwp2000 import Transport
+from kwp2000_can.interface.base_can_connection import CanConnection
+from kwp2000_can.protocols.kwp2000 import Transport
 
 
 class _CommandType(Enum):

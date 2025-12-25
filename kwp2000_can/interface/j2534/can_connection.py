@@ -3,7 +3,7 @@
 import logging
 from typing import Optional, Tuple
 
-from interface.base_can_connection import CanConnection
+from kwp2000_can.interface.base_can_connection import CanConnection
 from .j2534_connection import J2534Connection
 
 

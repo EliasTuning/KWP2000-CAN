@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kwp2000-can"
-version = "0.1.0"
+version = "2.0.0"
 description = "Python library for KWP2000 (Keyword Protocol 2000) communication over CAN bus using TP20 transport protocol and J2534 interface"
 readme = "README.md"
 requires-python = ">=3.7"

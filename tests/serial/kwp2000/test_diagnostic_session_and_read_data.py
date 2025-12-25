@@ -32,9 +32,9 @@ for module_name in modules_to_clear:
         del sys.modules[module_name]
 
 # Import from project root packages
-from protocols.kwp2000.transport import MockTransport
-from protocols.kwp2000.client import KWP2000Client
-from protocols.kwp2000.constants import (
+from kwp2000_can.protocols.kwp2000.transport import MockTransport
+from kwp2000_can.protocols.kwp2000.client import KWP2000Client
+from kwp2000_can.protocols.kwp2000.constants import (
     SERVICE_START_DIAGNOSTIC_SESSION,
     SERVICE_READ_DATA_BY_LOCAL_IDENTIFIER,
     RESPONSE_POSITIVE

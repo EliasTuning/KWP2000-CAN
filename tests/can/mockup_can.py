@@ -1,8 +1,8 @@
 from typing import List, Optional, Tuple, Callable, Union
 
-from protocols.can.tp20 import TP20Exception
+from kwp2000_can.protocols.can.tp20 import TP20Exception
 
-from interface.base_can_connection import CanConnection
+from kwp2000_can.interface import CanConnection
 
 # Import CanMessage and parsers from message_parsers module
 try:

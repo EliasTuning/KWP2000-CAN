@@ -32,10 +32,10 @@ for module_name in modules_to_clear:
         del sys.modules[module_name]
 
 # Import from project root packages
-from protocols.serial.ds2.transport import MockTransport
-from protocols.serial.ds2.client import DS2Client
-from protocols.serial.ds2.frames import build_frame
-from protocols.serial.ds2.constants import MOTRONIC, STATUS_OKAY, MEMORY_TYPE_ROM
+from kwp2000_can.protocols.serial.ds2.transport import MockTransport
+from kwp2000_can.protocols.serial.ds2.client import DS2Client
+from kwp2000_can.protocols.serial.ds2.frames import build_frame
+from kwp2000_can.protocols.serial.ds2.constants import MOTRONIC, STATUS_OKAY, MEMORY_TYPE_ROM
 
 
 def test_ident():

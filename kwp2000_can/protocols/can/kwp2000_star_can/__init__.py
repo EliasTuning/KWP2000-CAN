@@ -9,7 +9,7 @@ from .constants import START_BYTE, TARGET_ADDR, SRC_ADDR
 
 # Optional imports from serial module (may fail if pyserial not installed)
 try:
-    from protocols.serial.kwp2000_star_serial.frames import build_frame, parse_frame, calculate_checksum
+    from kwp2000_can.protocols.serial.kwp2000_star_serial.frames import build_frame, parse_frame, calculate_checksum
     _HAS_SERIAL_FRAMES = True
 except ImportError:
     _HAS_SERIAL_FRAMES = False

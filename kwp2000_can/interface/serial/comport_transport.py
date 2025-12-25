@@ -3,8 +3,8 @@
 import logging
 from typing import Optional
 
-from protocols.kwp2000 import Transport
-from protocols.kwp2000 import TransportException
+from kwp2000_can.protocols.kwp2000 import Transport
+from kwp2000_can.protocols.kwp2000 import TransportException
 
 try:
     import serial
