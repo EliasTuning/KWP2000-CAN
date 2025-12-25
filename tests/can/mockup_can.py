@@ -103,7 +103,26 @@ class MockupCan(CanConnection):
                 f"CAN ID mismatch: expected 0x{expected_msg.can_id:03X}, got 0x{can_id:03X}"
             )
         
-        if expected_msg.data_bytes != data:
+        # For flow control frames (PCI type 0x30), be more lenient - only check PCI type and separation time
+        # Block size can vary (0x00 = send all, 0x0F = 15 frames, etc.)
+        is_flow_control = len(data) >= 2 and (data[1] & 0xF0) == 0x30
+        is_expected_flow_control = (len(expected_msg.data_bytes) >= 2 and 
+                                    (expected_msg.data_bytes[1] & 0xF0) == 0x30)
+        
+        if is_flow_control and is_expected_flow_control:
+            # For flow control frames, only verify:
+            # - First byte (address)
+            # - PCI type (0x30)
+            # - Separation time (byte 3)
+            if (data[0] != expected_msg.data_bytes[0] or
+                (data[1] & 0xF0) != (expected_msg.data_bytes[1] & 0xF0) or
+                (len(data) >= 4 and len(expected_msg.data_bytes) >= 4 and
+                 data[3] != expected_msg.data_bytes[3])):
+                raise TP20Exception(
+                    f"Flow control frame mismatch for CAN ID 0x{can_id:03X}: "
+                    f"expected {expected_msg.data_bytes.hex(' ').upper()}, got {data.hex(' ').upper()}"
+                )
+        elif expected_msg.data_bytes != data:
             raise TP20Exception(
                 f"Data mismatch for CAN ID 0x{can_id:03X}: "
                 f"expected {expected_msg.data_bytes.hex(' ').upper()}, got {data.hex(' ').upper()}"

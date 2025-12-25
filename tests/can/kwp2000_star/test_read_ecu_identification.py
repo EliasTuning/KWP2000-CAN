@@ -7,7 +7,8 @@ from pathlib import Path
 
 # Calculate paths
 project_root = Path(__file__).parent.parent.parent.parent.resolve()
-test_dir = Path(__file__).parent.parent.parent.resolve()
+test_dir = Path(__file__).parent.parent.parent.resolve()  # tests/can
+can_test_dir = Path(__file__).parent.parent.resolve()  # tests/can
 
 # Remove any conflicting paths that might interfere with imports
 # Pytest may add test directories to sys.path, which can cause import conflicts
@@ -36,10 +37,10 @@ for module_name in modules_to_clear:
 from protocols.can.kwp2000_star_can import KWP2000StarTransportCAN
 from protocols.kwp2000 import KWP2000Client
 
-# Add tests directory to path for mockup_can import (after main imports)
-test_dir_str = str(test_dir)
-if test_dir_str not in sys.path:
-    sys.path.insert(0, test_dir_str)
+# Add tests/can directory to path for mockup_can import (after main imports)
+can_test_dir_str = str(can_test_dir)
+if can_test_dir_str not in sys.path:
+    sys.path.insert(0, can_test_dir_str)
 
 from mockup_can import MockupCan
 from message_parsers import parse_candump_messages
