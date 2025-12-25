@@ -146,26 +146,28 @@ class MockupCan(CanConnection):
             timeout: Maximum time to wait in seconds (ignored in CSV mode)
             
         Returns:
-            Tuple of (can_id, data)
+            Tuple of (can_id, data), or None if no ECU message available
             
         Raises:
-            TP20Exception: If connection not open, queue is empty, or message type is incorrect
+            TP20Exception: If connection not open
         """
         if not self._is_open:
             raise TP20Exception("CAN connection not open")
         
         # Check if there are any messages in the stack
         if not self.message_stack:
-            raise TP20Exception("No expected message available")
+            return None
         
-        # Pop the next message from the stack
-        msg = self.message_stack.pop(0)
+        # Peek at the next message without popping it
+        msg = self.message_stack[0]
         
-        # Check if the sender type is correct
+        # Only return (and pop) if it's an ECU message
+        # This prevents the worker thread from consuming tester messages
         if msg.sender.lower() != 'ecu':
-            raise TP20Exception(
-                f"Wrong sender type: expected 'ecu', got '{msg.sender}'"
-            )
+            return None
+        
+        # Pop the message now that we know it's an ECU message
+        msg = self.message_stack.pop(0)
         
         print(f"[RECEIVE] CAN ID: 0x{msg.can_id:03X}, Data: {msg.data_bytes.hex(' ').upper()}")
         print(f"         Type: {msg.type}, Description: {msg.description}")

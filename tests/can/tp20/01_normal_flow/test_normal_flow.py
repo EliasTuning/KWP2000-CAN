@@ -53,9 +53,11 @@ def test_normal_flow_diagnostic_session_and_read_data():
     can_connection = MockupCan(str(csv_path))
     
     # Create TP20 transport layer
+    # Set keepalive interval to 100 seconds to prevent interference with test messages
     tp20 = TP20Transport(
         can_connection=can_connection,
         dest=0x01,
+        keepalive_interval_ms=100000.0,  # 100 seconds
     )
     
     # Create KWP2000 client
