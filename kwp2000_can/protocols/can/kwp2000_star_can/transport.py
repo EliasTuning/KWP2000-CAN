@@ -4,7 +4,6 @@ import logging
 import time
 from typing import Optional
 
-from kwp2000_can.protocols.kwp2000 import TimingParameters, TIMING_PARAMETER_STANDARD
 from kwp2000_can.protocols.kwp2000 import Transport
 from kwp2000_can.protocols.kwp2000 import TransportException, TimeoutException
 from .constants import TARGET_ADDR, SRC_ADDR
@@ -41,6 +40,7 @@ class KWP2000StarTransportCAN(Transport):
             can_connection,
             rx_id: int,
             tx_id: int,
+            timeout: float = 0.1,
             logger: Optional[logging.Logger] = None
     ):
         """
@@ -52,12 +52,13 @@ class KWP2000StarTransportCAN(Transport):
                 recv_can_frame(timeout: float) -> Optional[Tuple[int, bytes]]
             rx_id: CAN ID to receive frames on
             tx_id: CAN ID to send frames on
+            timeout: Normal timeout in seconds for wait_frame operations (default: 0.1 = 100ms)
             logger: Optional logger instance (default: root logger)
         """
         self.logger = logger if logger is not None else logging.getLogger(__name__)
 
-        # Access timing parameters (used to set wait_frame timeout)
-        self.access_timings: TimingParameters = TIMING_PARAMETER_STANDARD
+        # Normal timeout value (used to set wait_frame timeout)
+        self.timeout: float = timeout
 
         # Store CAN connection
         self._can_connection = can_connection
@@ -173,7 +174,7 @@ class KWP2000StarTransportCAN(Transport):
         (0xF1 in the captured traffic), followed by ISO-TP PCI and data.
 
         Args:
-            timeout: Ignored; the timeout is derived from access_timings.p2max.
+            timeout: Ignored; the timeout is derived from self.timeout.
 
         Returns:
             Complete response payload bytes, or None if no frame arrives before timeout.
@@ -182,14 +183,14 @@ class KWP2000StarTransportCAN(Transport):
             TimeoutException: If a multi-frame response times out mid-stream.
             TransportException: For transport errors or invalid frames.
         """
-        del timeout  # unused, timeout derived from access timings
+        del timeout  # unused, timeout derived from self.timeout
 
         if not self._is_open:
             raise TransportException("Transport not open")
 
         try:
-            # P2max uses 25 ms resolution, convert to seconds
-            calculated_timeout = (self.access_timings.p2max * 25.0) / 1000.0
+            # Use the configured normal timeout value
+            calculated_timeout = self.timeout
 
             buffer = bytearray()
             total_len: Optional[int] = None
@@ -289,24 +290,21 @@ class KWP2000StarTransportCAN(Transport):
         self.logger.debug(f"Sending FC: {frame.hex()}")
         self._can_connection.send_can_frame(self._tx_id, frame)
 
-    def set_access_timings(self, timing_parameters: TimingParameters) -> None:
+    def set_timeout(self, timeout: float) -> None:
         """
-        Set the access timing parameters used for wait_frame timeout calculation.
+        Set the normal timeout value used for wait_frame timeout calculation.
 
-        This method updates the access_timings variable, which is used to calculate
-        the timeout for wait_frame calls. The timeout is calculated from p2max:
-        timeout = (p2max * 25.0) / 1000.0 seconds
+        This method updates the timeout variable, which is used as the timeout
+        for wait_frame calls.
 
         Args:
-            timing_parameters: TimingParameters instance (e.g., TIMING_PARAMETER_STANDARD or TIMING_PARAMETER_MINIMAL)
+            timeout: Timeout value in seconds (e.g., 0.1 for 100ms)
 
         Example:
-            from kwp2000.constants import TIMING_PARAMETER_MINIMAL
-
-            transport.set_access_timings(TIMING_PARAMETER_MINIMAL)
+            transport.set_timeout(0.1)  # Set to 100ms
         """
-        self.access_timings = timing_parameters
-        self.logger.info(f"Updated access timing parameters: p2max=0x{timing_parameters.p2max:02X}")
+        self.timeout = timeout
+        self.logger.info(f"Updated timeout: {timeout}s ({timeout * 1000:.0f}ms)")
 
     def __enter__(self):
         """Context manager entry."""
