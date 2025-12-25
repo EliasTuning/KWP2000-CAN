@@ -40,7 +40,7 @@ from tp20.frames import (
     build_channel_test,
 )
 
-from protocols.can.tp20.can_connection import CanConnection
+from interface.base_can_connection import CanConnection
 from protocols.kwp2000 import Transport
 
 

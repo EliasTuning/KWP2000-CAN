@@ -2,9 +2,9 @@
 
 from typing import Optional
 
-from protocols.kwp2000 import InvalidFrameException, NegativeResponseException
-from protocols.kwp2000 import RESPONSE_POSITIVE, RESPONSE_NEGATIVE
-from protocols.kwp2000 import parse_frame
+from .exceptions import InvalidFrameException, NegativeResponseException
+from .constants import RESPONSE_POSITIVE, RESPONSE_NEGATIVE
+from .frames import parse_frame
 
 
 class Response:

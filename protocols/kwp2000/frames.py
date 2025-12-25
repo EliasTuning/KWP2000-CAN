@@ -2,7 +2,7 @@
 
 from typing import Optional, Tuple
 
-from protocols.kwp2000 import (
+from .constants import (
     ADDRESS_MODE_NO_ADDRESS,
     ADDRESS_MODE_EXCEPTION,
     ADDRESS_MODE_PHYSICAL,

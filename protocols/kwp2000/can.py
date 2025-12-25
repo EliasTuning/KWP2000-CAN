@@ -2,10 +2,9 @@
 
 from typing import Optional
 
-from tp20.transport import TP20Transport
-
+from protocols.can.tp20.transport import TP20Transport
 from interface.j2534 import J2534CanConnection
-from protocols.kwp2000 import KWP2000Client
+from .client import KWP2000Client
 
 
 class KWP2000_TP20_J2534:

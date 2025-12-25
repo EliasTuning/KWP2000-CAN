@@ -1,12 +1,12 @@
 """Client class for KWP2000 communication."""
 from typing import Optional
 
-from protocols.kwp2000 import Request
-from protocols.kwp2000 import Response
-from protocols.kwp2000 import TimeoutException, NegativeResponseException
-from protocols.kwp2000 import TimingParameters
-from protocols.kwp2000 import Transport
-from protocols.kwp2000 import services
+from .request import Request
+from .response import Response
+from .exceptions import TimeoutException, NegativeResponseException
+from .constants import TimingParameters
+from .transport import Transport
+from . import services
 
 
 class KWP2000Client:

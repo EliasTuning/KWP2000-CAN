@@ -1,6 +1,6 @@
 """Request class for KWP2000."""
 
-from protocols.kwp2000 import build_frame
+from .frames import build_frame
 
 
 class Request:

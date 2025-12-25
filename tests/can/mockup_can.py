@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 from can import Message
 from tp20.exceptions import TP20Exception
 
-from protocols.can.tp20.can_connection import CanConnection
+from interface.base_can_connection import CanConnection
 
 
 @dataclass

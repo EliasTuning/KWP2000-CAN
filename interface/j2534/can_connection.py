@@ -1,20 +1,18 @@
-"""J2534 CAN connection adapter for TP20."""
+"""J2534 CAN connection adapter for ."""
 
 import logging
 from typing import Optional, Tuple
 
-from tp20.exceptions import TP20Exception
-
-from protocols.can.tp20.can_connection import CanConnection
+from interface.base_can_connection import CanConnection
 from .j2534_connection import J2534Connection
 
 
 class J2534CanConnection(CanConnection):
     """
-    J2534-based CAN connection adapter for TP20.
+    J2534-based CAN connection adapter for .
     
     Implements the CanConnection interface by wrapping J2534Connection,
-    converting between TP20's CAN frame format and J2534's raw byte format.
+    converting between 's CAN frame format and J2534's raw byte format.
     
     Usage:
         can_conn = J2534CanConnection(dll_path="path/to/dll.dll")
@@ -76,13 +74,13 @@ class J2534CanConnection(CanConnection):
             data: Data payload (up to 8 bytes)
             
         Raises:
-            TP20Exception: If send fails or connection not open
+            Exception: If send fails or connection not open
         """
         if not self._is_open:
-            raise TP20Exception("CAN connection not open")
+            raise Exception("CAN connection not open")
         
         if len(data) > 8:
-            raise TP20Exception(f"CAN frame data too long: {len(data)} bytes (max 8)")
+            raise Exception(f"CAN frame data too long: {len(data)} bytes (max 8)")
         
         # J2534 expects: 4-byte CAN ID (big-endian) + data
         can_id_bytes = can_id.to_bytes(4, "big")
@@ -91,7 +89,7 @@ class J2534CanConnection(CanConnection):
         try:
             self._j2534_conn.specific_send(payload)
         except Exception as e:
-            raise TP20Exception(f"Failed to send CAN frame: {e}") from e
+            raise Exception(f"Failed to send CAN frame: {e}") from e
     
     def recv_can_frame(self, timeout: float = 1.0) -> Optional[Tuple[int, bytes]]:
         """
@@ -104,10 +102,10 @@ class J2534CanConnection(CanConnection):
             Tuple of (can_id, data) or None if timeout occurs
             
         Raises:
-            TP20Exception: If receive fails or connection not open
+            Exception: If receive fails or connection not open
         """
         if not self._is_open:
-            raise TP20Exception("CAN connection not open")
+            raise Exception("CAN connection not open")
         
         try:
             # J2534 returns: 4-byte CAN ID (big-endian) + data
@@ -126,5 +124,5 @@ class J2534CanConnection(CanConnection):
             
             return (can_id, can_data)
         except Exception as e:
-            raise TP20Exception(f"Failed to receive CAN frame: {e}") from e
+            raise Exception(f"Failed to receive CAN frame: {e}") from e
 
