@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from ds2.constants import (
+from .constants import (
     STATUS_OKAY,
     STATUS_BUSY,
     STATUS_ERROR_ECU_REJECTED,
@@ -11,14 +11,14 @@ from ds2.constants import (
     STATUS_ERROR_ECU_NUMBER,
     STATUS_ERROR_ECU_NACK,
 )
-from ds2.exceptions import (
+from .exceptions import (
     InvalidChecksumException,
     ComputerBusy,
     InvalidParameter,
     InvalidCommand,
     ProtocolError,
 )
-from ds2.frames import parse_frame
+from .frames import parse_frame
 
 
 class Response:

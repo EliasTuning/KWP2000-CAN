@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from ds2.exceptions import TransportException
+from .exceptions import TransportException
 
 
 class Transport(ABC):

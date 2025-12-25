@@ -1,11 +1,10 @@
 """Client class for DS2 communication."""
 
-from ds2 import services
-from ds2.exceptions import TimeoutException
-from ds2.request import Request
-from ds2.transport import Transport
-
-from protocols.serial.ds2.response import Response
+from . import services
+from .exceptions import TimeoutException
+from .request import Request
+from .transport import Transport
+from .response import Response
 
 
 class DS2Client:

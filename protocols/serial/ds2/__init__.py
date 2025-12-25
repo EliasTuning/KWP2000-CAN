@@ -5,10 +5,27 @@ A Python library for DS2 (Diagnostic System 2) communication,
 similar in API design to KWP2000.
 """
 
-from ds2.client import DS2Client
-from ds2.request import Request
-from protocols.serial.ds2.response import Response
-from ds2 import services
+from .client import DS2Client
+from .request import Request
+from .response import Response
+from .transport import Transport, MockTransport
+from . import services, exceptions
+from .constants import (
+    MOTRONIC,
+    AUTOMATIC_TRANSMISSION,
+    IKE,
+    LCM,
+    CMD_SET_ANALOG,
+    CMD_READ_MEMORY,
+    CMD_WRITE_MEMORY,
+    CMD_ACTIVATE_TEST,
+    CMD_DEACTIVATE_TEST,
+    MEMORY_TYPE_ROM,
+    MEMORY_TYPE_EEPROM,
+    MEMORY_TYPE_INTERNAL_RAM,
+    MEMORY_TYPE_EXTERNAL_RAM,
+    MEMORY_TYPE_DPRAM,
+)
 
 __version__ = "0.1.0"
 
@@ -42,7 +59,7 @@ __all__ = [
 
 # Optional import for COM port support (may fail if pyserial not available)
 try:
-    from ds2.comport_transport import ComportTransport
+    from .comport_transport import ComportTransport
     __all__.append('ComportTransport')
 except ImportError:
     pass  # pyserial not available

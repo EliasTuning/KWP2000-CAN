@@ -3,8 +3,8 @@
 import logging
 from typing import Optional
 
-from ds2.exceptions import TransportException
-from ds2.transport import Transport
+from .exceptions import TransportException
+from .transport import Transport
 
 try:
     import serial

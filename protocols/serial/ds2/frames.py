@@ -2,7 +2,7 @@
 
 from typing import Tuple
 
-from ds2.exceptions import InvalidChecksumException
+from .exceptions import InvalidChecksumException
 
 
 def calculate_checksum(message: bytes) -> int:

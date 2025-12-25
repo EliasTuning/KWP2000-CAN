@@ -32,7 +32,7 @@ class Request:
         Returns:
             Complete frame bytes ready to send
         """
-        from ds2.frames import build_frame
+        from .frames import build_frame
         return build_frame(self.address, self.payload)
     
     def get_payload(self) -> bytes:

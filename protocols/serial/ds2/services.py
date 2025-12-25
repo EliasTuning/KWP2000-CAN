@@ -2,14 +2,13 @@
 
 from dataclasses import dataclass
 
-from ds2.constants import (
+from .constants import (
     CMD_READ_MEMORY,
     CMD_WRITE_MEMORY,
     MEMORY_TYPE_NAMES,
 )
-from ds2.request import Request
-
-from protocols.serial.ds2.response import Response
+from .request import Request
+from .response import Response
 
 
 class ServiceBase:
