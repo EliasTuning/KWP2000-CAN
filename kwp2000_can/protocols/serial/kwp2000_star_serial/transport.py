@@ -134,6 +134,8 @@ class KWP2000StarTransport(Transport):
         This method receives a STAR frame from the COM port, parses it, and returns
         the KWP2000 service data (payload).
         
+        STAR frame format: [START_BYTE, TARGET_ADDR, SRC_ADDR, length, payload..., checksum]
+        
         Args:
             timeout: Maximum time to wait in seconds (ignored, timeout is calculated from access_timings)
             
@@ -151,11 +153,56 @@ class KWP2000StarTransport(Transport):
             # P2max uses 25 ms resolution, convert to seconds
             calculated_timeout = (self.access_timings.p2max * 25.0) / 1000.0
             
-            # Receive STAR frame from COM port transport
-            star_frame = self._comport_transport.wait_frame(timeout=calculated_timeout)
+            # Import constants for validation
+            from .constants import START_BYTE, TARGET_ADDR, SRC_ADDR
             
-            if star_frame is None:
+            # Step 1: Receive first 3 bytes [START_BYTE, TARGET_ADDR, SRC_ADDR]
+            header = self._comport_transport.wait_frame(timeout=calculated_timeout, max_bytes=3)
+            
+            if header is None or len(header) != 3:
                 return None
+            
+            # Step 2: Validate first 3 bytes
+            start_byte = header[0]
+            target_addr = header[1]
+            src_addr = header[2]
+            
+            # Validate start byte
+            if start_byte != START_BYTE:
+                raise TransportException(
+                    f"Invalid start byte: expected 0x{START_BYTE:02X}, got 0x{start_byte:02X}"
+                )
+            
+            # Validate target address (optional check, as parse_frame may allow different values)
+            # Note: parse_frame currently doesn't raise on mismatch, but we can still validate
+            if target_addr != TARGET_ADDR:
+                self.logger.debug(
+                    f"Target address mismatch: expected 0x{TARGET_ADDR:02X}, got 0x{target_addr:02X}"
+                )
+            
+            # Validate source address (optional check, as parse_frame may allow different values)
+            if src_addr != SRC_ADDR:
+                self.logger.debug(
+                    f"Source address mismatch: expected 0x{SRC_ADDR:02X}, got 0x{src_addr:02X}"
+                )
+            
+            # Step 3: Read length byte (4th byte)
+            length_byte_data = self._comport_transport.wait_frame(timeout=calculated_timeout, max_bytes=1)
+            
+            if length_byte_data is None or len(length_byte_data) != 1:
+                return None
+            
+            payload_length = length_byte_data[0]
+            
+            # Step 4: Receive the rest based on length (payload + checksum)
+            remaining_bytes = payload_length + 1  # payload + checksum
+            remaining_data = self._comport_transport.wait_frame(timeout=calculated_timeout, max_bytes=remaining_bytes)
+            
+            if remaining_data is None or len(remaining_data) != remaining_bytes:
+                return None
+            
+            # Step 5: Combine header, length, and remaining data, then parse
+            star_frame = header + length_byte_data + remaining_data
             
             self.logger.debug(f"Received STAR frame: {star_frame.hex()}")
             
