@@ -1,34 +1,16 @@
 # KWP2000-CAN
 
-A Python library for automotive diagnostics. It implements multiple legacy
-protocol stacks that are still common on VAG/BMW platforms:
+A Python library for automotive diagnostics implementing legacy protocol stacks commonly used on VAG and BMW platforms.
 
-- KWP2000 over TP20 on CAN with J2534
-- BMW-style KWP2000-STAR over CAN (ISO-TP with address byte)
-- KWP2000-STAR over serial 
-- BMW DS2 over serial
+## Supported Protocols
 
-Everything is exposed through small transport classes and high-level clients so
-you can assemble only the layers you need.
-
-## Features
-
-- **Multiple stacks**
-  - KWP2000 over TP20 on CAN (VAG) via J2534
-  - KWP2000-STAR over CAN (BMW ISO-TP + address byte)
-  - KWP2000-STAR over serial
-  - DS2 over serial (BMW pre-KWP/UDS)
-- **Clean layering**: compose transports + clients; context-manager friendly
-- **Service layers**
-  - KWP2000 services: Start/Stop Comm, Sessions, Routine Control, Read/Write Data,
-    ECU Reset, Timing Parameter Access, Send Data, etc.
-  - DS2 services: ident, read/write memory, activate/deactivate tests, etc.
-- **Interfaces**
-  - J2534 Pass-Thru (auto-detects DLL when possible)
-  - CAN abstraction + mock connection for tests
-  - Serial transports with pyserial
-- **Timing helpers**: shared timing parameter objects across transports
-- **Examples & tests**: reference scripts under `example/` and pytest cases under `tests/`
+| Protocol | Bus | Hardware | Use Case |
+|----------|-----|----------|----------|
+| **KWP2000 TP20** | CAN | J2534 adapter | VAG vehicles (~2004–2010, pre-UDS) |
+| **KWP2000 CAN** | CAN | J2534 adapter | BMW vehicles (ISO-TP with address byte) |
+| **KWP2000 CAN** | CAN | K-DCAN cable | BMW vehicles via USB adapter |
+| **KWP2000** | K-Line | Serial/USB | BMW vehicles over K-Line |
+| **DS2** | K-Line | Serial/USB | BMW vehicles (pre-KWP2000 era) |
 
 ## Installation
 
@@ -36,88 +18,46 @@ you can assemble only the layers you need.
 pip install kwp2000-can
 ```
 
-For serial stacks install pyserial if you do not have it already:
+For serial/K-Line communication, also install pyserial:
 
 ```bash
 pip install pyserial
 ```
 
-## Protocol Support
-
-### Stacks at a Glance
-
-| Stack | Transport | Hardware | Module / Entry point | Notes |
-|-------|-----------|----------|----------------------|-------|
-| KWP2000 over TP20 | CAN  | J2534 | `protocols.kwp2000.can.KWP2000_TP20_J2534` | VAG TP20 framing (used ~2004–2010, pre-UDS); auto DLL detection |
-| KWP2000-STAR (BMW) | CAN | J2534 | Uses address byte + ISO-TP PCI; flow control handled for you |
-| KWP2000-STAR (BMW) | Serial | pyserial COM port | `protocols.serial.kwp2000_star_serial.transport.KWP2000StarTransport` | Includes baudrate scan helper and checksum handling |
-| DS2 (BMW) | Serial | pyserial COM port | `protocols.serial.ds2` (`ComportTransport`, `DS2Client`) | Classic BMW DS2 framing with echo + reply handling |
-
-### BMW protocol specifics
-
-- KWP2000 (BMW) typically runs at **10400 baud** with an additive checksum.
-- KWP2000\* / STAR uses **9600 baud** with an **XOR checksum**.
-- BMW-FAST is essentially KWP2000 at **115200 baud** (same framing, higher speed).
-
-### KWP2000 Services (implemented)
-
-See the full list with notes in [services.md](services.md).
-
-
-## Examples
-
-See the `example/` directory for complete usage examples:
-
-- `kwp2000_tp20_j2534.py`: VAG TP20
-- `kwp2000_star_j2534.py`: KWP2000-STAR over CAN (J2534)
-- `kwp2000_star_comport.py`: KWP2000-STAR over serial
-- `ds2_comport.py`: DS2 over serial
-
-### KWP2000-STAR over CAN (BMW)
+## Quick Start
 
 ```python
-from kwp2000_can.interface.j2534 import J2534CanConnection
-from kwp2000_can.protocols.can import KWP2000StarTransportCAN
-from kwp2000_can.protocols.kwp2000 import KWP2000Client
+from kwp2000_can.protocols.kwp2000.can import KWP2000_TP20_J2534
 
-conn = J2534CanConnection(baudrate=500000)
-transport = KWP2000StarTransportCAN(conn, rx_id=0x612, tx_id=0x6F1)
-client = KWP2000Client(transport)
-
-with transport, client:
-    resp = client.startDiagnosticSession(session_type=0x81)
-    print(resp)
+with KWP2000_TP20_J2534() as client:
+    data = client.readDataByLocalIdentifier(local_identifier=0x01)
+    print(data)
 ```
 
-### KWP2000-STAR over Serial
+See [examples.md](examples.md) for complete usage examples for all protocols.
 
-```python
-from kwp2000_can.protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
-from kwp2000_can.protocols.kwp2000 import KWP2000Client
+## Features
 
-transport = KWP2000StarTransport(port="COM3", baudrate=9600)
-client = KWP2000Client(transport)
+- **Clean layering** — Compose transports and clients; context-manager friendly
+- **KWP2000 services** — Sessions, Read/Write Memory, ECU Identification, Routine Control, Timing Parameters, and more
+- **DS2 services** — Ident, Read/Write Memory, Activate/Deactivate tests
+- **J2534 Pass-Thru** — Auto-detects DLL when possible
+- **Serial transports** — pyserial-based with baudrate scanning
 
-with transport, client:
-    resp = client.tester_present(timeout=0.2)
-    print(resp)
-```
+## BMW Protocol Notes
 
-### DS2 over Serial
+| Variant | Baudrate | Checksum |
+|---------|----------|----------|
+| KWP2000 | 10400 baud | Additive |
+| KWP2000-STAR | 9600 baud | XOR |
+| BMW-FAST | 115200 baud | Additive |
 
-```python
-from kwp2000_can.protocols.serial.ds2 import ComportTransport, DS2Client, services
+## Documentation
 
-transport = ComportTransport(port="COM3", baudrate=9600)
-
-with DS2Client(transport) as client:
-    ident = client.ident(address=services.MOTRONIC)
-    print(ident)
-```
+- [Examples](examples.md) — Complete usage examples for all protocols
+- [Services](services.md) — KWP2000 service reference
 
 ## Testing
-
-Run the test suite:
 
 ```bash
 python -m pytest tests/
@@ -127,35 +67,9 @@ python -m pytest tests/
 
 - Python 3.7+
 - `python-can>=4.0.0`
-- J2534-compatible hardware interface (for hardware testing)
-
-## Project Structure
-
-```
-KWP2000-CAN/
-├── protocols/
-│   ├── kwp2000/                     # KWP2000 core (services, client, timing)
-│   ├── can/tp20/                    # TP20 transport + timing
-│   ├── can/kwp2000_star_can/        # BMW KWP2000-STAR over CAN
-│   ├── serial/kwp2000_star_serial/  # BMW KWP2000-STAR over serial
-│   └── serial/ds2/                  # BMW DS2 over serial
-├── interface/
-│   ├── j2534/                       # J2534 bindings + auto DLL detection
-│   └── serial/                      # Shared COM transport helpers
-├── example/                         # Usage examples per stack
-└── tests/                           # Pytest coverage (CAN + TP20 flows)
-```
+- J2534-compatible hardware (for CAN protocols)
+- pyserial (for K-Line protocols)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Links
-
-- [PyPI Package](https://pypi.org/project/kwp2000-can/)
-- [GitHub Repository](https://github.com/yourusername/KWP2000-CAN)
-
+MIT License — see [LICENSE](LICENSE) for details.
