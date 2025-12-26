@@ -308,23 +308,80 @@ class Kwp2000StarDcan(Transport):
             ValueError: If frame structure is invalid, addresses don't match, or checksum is incorrect
             TimeoutError: If no frame is received within timeout
         """
-        data = self._comport_transport.wait_frame(self.timeout)
+        if not self._is_open:
+            raise RuntimeError("Connection is not open. Call open() first.")
         
-        # Handle timeout (None return)
-        if data is None:
-            raise TimeoutError(f"No frame received within {timeout} seconds")
-        
-        # Validate minimum frame length
-        if len(data) < 4:
-            raise ValueError(f"Frame too short: received {len(data)} bytes, minimum 4 bytes required")
-        
-        # Detect frame format based on first byte
-        if data[0] == 0x80:
-            # Long format: [0x80, source, target, length, payload..., checksum]
-            return self._parse_receive_frame_long(data)
-        else:
-            # Short format: [0x80 | length, source, target, payload..., checksum]
-            return self._parse_receive_frame_short(data)
+        try:
+            # Step 1: Receive first 3 bytes using ComportTransport
+            header = self._comport_transport.wait_frame(timeout=timeout, max_bytes=3)
+            
+            if header is None or len(header) != 3:
+                raise TimeoutError(f"No frame received within {timeout} seconds (only got {len(header) if header else 0} bytes)")
+            
+            # Step 2: Validate first 3 bytes
+            first_byte = header[0]
+            source_byte = header[1]
+            target_byte = header[2]
+            
+            # Validate addresses
+            if source_byte != self.source:
+                raise ValueError(
+                    f"Source address mismatch: expected tester address 0x{self.source:02X}, "
+                    f"but received 0x{source_byte:02X}"
+                )
+            
+            if target_byte != self.target:
+                raise ValueError(
+                    f"Target address mismatch: expected ECU address 0x{self.target:02X}, "
+                    f"but received 0x{target_byte:02X}"
+                )
+            
+            # Step 3: Determine frame format and calculate remaining bytes to read
+            if first_byte == 0x80:
+                # Long format: [0x80, source, target, length, payload..., checksum]
+                # Need to read length byte first
+                length_byte_data = self._comport_transport.wait_frame(timeout=timeout, max_bytes=1)
+                if length_byte_data is None or len(length_byte_data) != 1:
+                    raise TimeoutError(f"Timeout reading length byte")
+                
+                expected_payload_len = length_byte_data[0]
+                # Remaining bytes: payload + checksum = payload_len + 1
+                remaining_bytes = expected_payload_len + 1
+            else:
+                # Short format: [0x80 | length, source, target, payload..., checksum]
+                if (first_byte & 0x80) == 0:
+                    raise ValueError(f"Invalid length byte: 0x{first_byte:02X} (must have 0x80 bit set)")
+                
+                expected_payload_len = first_byte & 0x7F
+                # Remaining bytes: payload + checksum = payload_len + 1
+                remaining_bytes = expected_payload_len + 1
+                length_byte_data = None  # Not needed for short format
+            
+            # Step 4: Receive the rest based on calculated length
+            remaining_data = self._comport_transport.wait_frame(timeout=timeout, max_bytes=remaining_bytes)
+            
+            if remaining_data is None or len(remaining_data) != remaining_bytes:
+                raise TimeoutError(
+                    f"Timeout reading remaining data: expected {remaining_bytes} bytes, "
+                    f"but received {len(remaining_data) if remaining_data else 0} bytes"
+                )
+            
+            # Step 5: Combine header and remaining data, then pass to parsing methods
+            if first_byte == 0x80:
+                # Long format: combine [0x80, source, target] + [length] + remaining_data
+                data = header + length_byte_data + remaining_data
+                return self._parse_receive_frame_long(data)
+            else:
+                # Short format: combine [0x80 | length, source, target] + remaining_data
+                data = header + remaining_data
+                return self._parse_receive_frame_short(data)
+                
+        except TimeoutError:
+            raise
+        except ValueError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to receive frame: {e}") from e
 
     def _calculate_checksum(self, data: bytes) -> int:
         """
