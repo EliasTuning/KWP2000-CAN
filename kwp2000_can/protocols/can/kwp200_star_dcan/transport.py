@@ -308,7 +308,7 @@ class Kwp2000StarDcan(Transport):
             ValueError: If frame structure is invalid, addresses don't match, or checksum is incorrect
             TimeoutError: If no frame is received within timeout
         """
-        data = self._comport_transport.wait_frame(timeout)
+        data = self._comport_transport.wait_frame(self.timeout)
         
         # Handle timeout (None return)
         if data is None:
