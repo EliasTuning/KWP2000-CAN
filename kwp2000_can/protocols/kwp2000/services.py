@@ -2280,7 +2280,7 @@ class ReadEcuIdentification(ServiceBase):
         if not response.is_positive():
             raise ValueError("Response is not positive")
         
-        return cls.ServiceData(ecu_identification_data=response.data)
+        return cls.ServiceData(ecu_identification_data=response.data[1:])
 
 
 class DynamicallyDefineLocalIdentifier(ServiceBase):
