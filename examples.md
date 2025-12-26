@@ -1,222 +1,223 @@
 # Examples
 
-Complete usage examples for all supported protocols.
+This library is built with a layered architecture similar to [udsoncan](https://udsoncan.readthedocs.io/en/latest/udsoncan/examples.html). You can work at different levels of abstraction depending on your needs.
 
 ## Table of Contents
 
-- [KWP2000 TP20 VAG via J2534](#kwp2000-tp20-vag-via-j2534)
-- [KWP2000 CAN BMW via J2534](#kwp2000-can-bmw-via-j2534)
-- [KWP2000 CAN BMW via K-DCAN](#kwp2000-can-bmw-via-k-dcan)
-- [KWP2000 BMW over K-Line](#kwp2000-bmw-over-k-line)
-- [DS2 BMW over K-Line](#ds2-bmw-over-k-line)
+- [Different Layers of Intelligence (1 to 4)](#different-layers-of-intelligence-1-to-4)
+  - [1. Raw Connection](#1-raw-connection)
+  - [2. Request and Responses](#2-request-and-responses)
+  - [3. Services](#3-services)
+  - [4. Client](#4-client)
+- [Protocol-Specific Examples](#protocol-specific-examples)
 
 ---
 
-## KWP2000 TP20 VAG via J2534
+## Different Layers of Intelligence (1 to 4)
 
-VAG TP20 protocol over CAN bus using a J2534 Pass-Thru adapter.
+In the following examples, we will start a routine with the RoutineControl service (0x31) in 4 different ways. We will start by crafting a binary payload manually, then add layers of interpretation making the code more comprehensive each time.
+
+### 1. Raw Connection
+
+At the lowest level, you work directly with raw bytes. This gives you full control but requires manual payload construction and response parsing.
 
 ```python
-from kwp2000_can.protocols.kwp2000.can import KWP2000_TP20_J2534
+# Sends RoutineControl (0x31), ControlType=1 (start), RoutineID=0x1234
+my_connection.send(b'\x31\x01\x12\x34')
+payload = my_connection.wait_frame(timeout=1)
 
-with KWP2000_TP20_J2534() as client:
-    # Start diagnostic session
-    response = client.startDiagnosticSession(session_type=0x89)
+if payload == b'\x71\x01\x12\x34':
+    print('Success!')
+else:
+    print('Start of routine 0x1234 failed')
+```
+
+### 2. Request and Responses
+
+Using the `Request` and `Response` classes, you can build requests more cleanly and get structured responses.
+
+```python
+from kwp2000_can.protocols.kwp2000 import Request, Response, services
+
+# Build request using service ID and data bytes
+req = Request(services.RoutineControl.SERVICE_ID, b'\x01\x12\x34')
+my_connection.send(req.get_data())
+
+payload = my_connection.wait_frame(timeout=1)
+response = Response.from_payload(payload)
+
+if response.service == 0x31 and response.code == Response.Code.PositiveResponse:
+    if response.data == b'\x01\x12\x34':
+        print('Success!')
+    else:
+        print('Start of routine 0x1234 failed')
+```
+
+### 3. Services
+
+Service classes provide `make_request()` and `interpret_response()` methods that handle the byte-level details for you.
+
+```python
+from kwp2000_can.protocols.kwp2000 import Request, Response, services
+
+# Create request using service class
+req = services.RoutineControl.make_request(
+    control_type=services.RoutineControl.ControlType.startRoutine,
+    routine_id=0x1234
+)
+my_connection.send(req.get_data())
+
+payload = my_connection.wait_frame(timeout=1)
+response = Response.from_payload(payload)
+
+# Interpret response using service class
+service_data = services.RoutineControl.interpret_response(response)
+
+if (response.code == Response.Code.PositiveResponse
+    and service_data.control_type_echo == 1
+    and service_data.routine_id_echo == 0x1234):
+    print('Success!')
+else:
+    print('Start of routine 0x1234 failed')
+```
+
+### 4. Client
+
+The `KWP2000Client` provides the highest level of abstraction. It handles request building, sending, response parsing, and validation in a single method call.
+
+```python
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
+
+client = KWP2000Client(my_connection)
+
+with client:
+    try:
+        # control_type_echo and routine_id_echo are validated by the client
+        response = client.start_routine(routine_id=0x1234)
+        print('Success!')
+    except Exception:
+        print('Start of routine 0x1234 failed')
+```
+
+---
+
+## More Client Examples
+
+### Starting a Diagnostic Session
+
+```python
+from kwp2000_can.protocols.kwp2000 import KWP2000Client
+
+with KWP2000Client(transport) as client:
+    # Start OBD2 diagnostic session
+    response = client.startDiagnosticSession(diagnostic_mode=0x81)
     print(f"Session started: {response}")
     
-    # Read data by local identifier
-    data = client.readDataByLocalIdentifier(local_identifier=0x01)
-    print(f"Data: {data}")
-```
-
----
-
-## KWP2000 CAN BMW via J2534
-
-BMW KWP2000-STAR protocol over CAN using a J2534 Pass-Thru adapter.
-
-```python
-from kwp2000_can.interface.j2534 import J2534CanConnection
-from kwp2000_can.protocols.can import KWP2000StarTransportCAN
-from kwp2000_can.protocols.kwp2000 import KWP2000Client
-
-# Initialize J2534 connection (auto-detects DLL or specify path)
-conn = J2534CanConnection(
-    dll_path=r'C:\Program Files (x86)\OpenECU\OpenPort 2.0\drivers\openport 2.0\op20pt32.dll'
-)
-conn.open()
-
-# Create transport with ECU addresses
-transport = KWP2000StarTransportCAN(
-    can_connection=conn,
-    rx_id=0x612,
-    tx_id=0x6F1
-)
-
-client = KWP2000Client(transport)
-
-with client:
-    # Read ECU identification
-    data = client.read_ecu_identification(ecu_identification_option=0x80)
-    print(f"ECU ID: {data}")
-    
-    # Read data by common identifier
-    data = client.read_data_by_common_identifier(0x2502)
-    print(f"Data: {data}")
-```
-
----
-
-## KWP2000 CAN BMW via K-DCAN
-
-BMW KWP2000-STAR protocol using a K-DCAN USB adapter (serial over CAN).
-
-```python
-from kwp2000_can.protocols.can.kwp200_star_dcan.transport import Kwp2000StarDcan
-from kwp2000_can.protocols.kwp2000 import KWP2000Client
-
-# Initialize K-DCAN adapter
-adapter = Kwp2000StarDcan(
-    port="COM1",
-    baudrate=115200,
-    timeout=1.0,
-    target=0x12,   # ECU address
-    source=0xF1    # Tester address
-)
-adapter.open()
-
-client = KWP2000Client(adapter)
-
-with client:
-    # Read data by common identifier
-    data = client.read_data_by_common_identifier(0x2502)
-    print(f"Data: {data}")
-```
-
----
-
-## KWP2000 BMW over K-Line
-
-Standard KWP2000 protocol over K-Line serial connection.
-
-```python
-from kwp2000_can.interface.serial import ComportTransport
-from kwp2000_can.protocols.kwp2000 import KWP2000Client
-
-# Initialize serial transport
-transport = ComportTransport(
-    port="COM1",
-    baudrate=125000,
-    timeout=1.0
-)
-
-client = KWP2000Client(transport)
-
-with client:
-    # Start diagnostic session
-    response = client.startDiagnosticSession(session_type=0x81)
-    print(f"Session started: {response}")
-    
-    # Read memory by address
-    result = client.readMemoryByAddress2(
-        memory_address=0x005B9464,
-        memory_size=16,
-        memory_type=0
-    )
-    print(f"Memory data: {result.record_values.hex()}")
-```
-
-### KWP2000-STAR over K-Line
-
-BMW KWP2000-STAR variant with XOR checksum and baudrate negotiation.
-
-```python
-from kwp2000_can.protocols.serial.kwp2000_star_serial.transport import KWP2000StarTransport
-from kwp2000_can.protocols.kwp2000 import (
-    KWP2000Client,
-    BAUDRATE_115200,
-    baudrate_identifier_to_value,
-    TIMING_PARAMETER_MINIMAL
-)
-
-# Initialize transport (starts at 9600 baud)
-transport = KWP2000StarTransport(
-    port="COM1",
-    baudrate=9600
-)
-
-client = KWP2000Client(transport)
-
-with client:
-    # Auto-detect working baudrate
-    working_baudrate = transport.identify_baudrate(client, verbose=True)
-    print(f"Found baudrate: {working_baudrate}")
-    
-    # Request higher baudrate from ECU
+    # With baudrate negotiation (for serial)
     response = client.startDiagnosticSession(
         diagnostic_mode=0x81,
-        baudrate_identifier=BAUDRATE_115200
+        baudrate_identifier=0x05  # 115200 baud
     )
-    transport.set_baudrate(baudrate_identifier_to_value(BAUDRATE_115200))
+```
+
+### Reading Memory
+
+```python
+with KWP2000Client(transport) as client:
+    # Read memory by address
+    result = client.readMemoryByAddress(
+        memory_address=0x5B9000,
+        memory_size=16
+    )
+    print(f"Data: {result.record_values.hex()}")
+    print(f"Address echo: 0x{result.memory_address_echo:06X}")
     
-    # Set minimal timing for fast communication
-    transport.set_access_timings(TIMING_PARAMETER_MINIMAL)
-    client.access_timing_parameter(timing_parameters=TIMING_PARAMETER_MINIMAL)
-    
-    # Read memory
+    # Read memory with memory type (variant 2)
     result = client.readMemoryByAddress2(
-        memory_address=0x5B90D8,
-        memory_size=1,
-        memory_type=0
+        memory_address=0x5B9000,
+        memory_type=0x00,  # ROM
+        memory_size=16
     )
-    print(f"Value: {result.record_values.hex()}")
+    print(f"Data: {result.record_values.hex()}")
+```
+
+### Reading ECU Identification
+
+```python
+with KWP2000Client(transport) as client:
+    result = client.read_ecu_identification(ecu_identification_option=0x80)
+    print(f"ECU ID: {result.ecu_identification_data.hex()}")
+```
+
+### Security Access
+
+```python
+from kwp2000_can.protocols.kwp2000 import services
+
+with KWP2000Client(transport) as client:
+    # Request seed
+    seed_response = client.security_access(
+        access_type=services.SecurityAccess.AccessType.REQUEST_SEED
+    )
+    seed = seed_response.security_access_data
+    print(f"Seed: {seed.hex()}")
+    
+    # Calculate key (implement your algorithm)
+    key = calculate_key(seed)
+    
+    # Send key
+    key_response = client.security_access(
+        access_type=services.SecurityAccess.AccessType.SEND_KEY,
+        security_access_data=key
+    )
+    print("Security unlocked!")
+```
+
+### Keeping the Session Alive
+
+```python
+from kwp2000_can.protocols.kwp2000 import services
+
+with KWP2000Client(transport) as client:
+    # With response expected
+    client.tester_present()
+    
+    # Without waiting for response (fire-and-forget)
+    client.tester_present(
+        response_required=services.TesterPresent.ResponseRequired.NO
+    )
+```
+
+### Setting Timing Parameters
+
+```python
+from kwp2000_can.protocols.kwp2000 import TIMING_PARAMETER_MINIMAL
+
+with KWP2000Client(transport) as client:
+    # Set minimal timing for fast communication
+    response = client.access_timing_parameter(
+        timing_parameters=TIMING_PARAMETER_MINIMAL
+    )
+    print(f"Timing set: P2max = {response.timing_parameters.p2max}")
 ```
 
 ---
 
-## DS2 BMW over K-Line
+## Protocol-Specific Examples
 
-BMW DS2 protocol for older vehicles (pre-KWP2000 era).
+For complete working examples with specific transports (J2534, K-DCAN, K-Line, etc.), see the `example/` directory:
 
-```python
-import serial
-from kwp2000_can.protocols.serial.ds2 import DS2Client, ComportTransport, MOTRONIC
-
-# List available COM ports
-ports = ComportTransport.list_ports()
-print(f"Available ports: {ports}")
-
-# Initialize DS2 transport (9600 baud, even parity)
-transport = ComportTransport(
-    port="COM1",
-    baudrate=9600,
-    timeout=1.0,
-    parity=serial.PARITY_EVEN
-)
-
-client = DS2Client(transport)
-
-with client:
-    # Read ECU identification
-    ident = client.ident(address=MOTRONIC)
-    print(f"Identification: {ident['data']}")
-    
-    # Read memory by name
-    result = client.read_memory_by_name(
-        address=MOTRONIC,
-        memory_type_name="rom",
-        memory_address=0x005B9464,
-        memory_size=16
-    )
-    print(f"Address: 0x{result.address_echo:08X}")
-    print(f"Memory type: 0x{result.memory_type_echo:02X}")
-    print(f"Data: {result.memory_data.hex()}")
-```
+| Protocol | File |
+|----------|------|
+| KWP2000 TP20 VAG via J2534 | `example/can/kwp2000_tp20_j2534.py` |
+| KWP2000 CAN BMW via J2534 | `example/can/kwp2000_star_j2534.py` |
+| KWP2000 CAN BMW via K-DCAN | `example/can/kwp2000_star_dcan.py` |
+| KWP2000 BMW over K-Line | `example/serial/kwp2000_comport.py` |
+| KWP2000-STAR over K-Line | `example/serial/kwp2000_star_comport.py` |
+| DS2 BMW over K-Line | `example/serial/ds2_comport.py` |
 
 ---
 
 ## Additional Resources
 
-- See the `example/` directory for runnable scripts
-- Check [services.md](services.md) for a complete list of KWP2000 services
-
+- [services.md](services.md) — Complete list of implemented KWP2000 services
