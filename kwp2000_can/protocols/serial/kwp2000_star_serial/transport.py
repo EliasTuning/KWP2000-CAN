@@ -78,6 +78,9 @@ class KWP2000StarTransport(Transport):
         )
         
         self._is_open = False
+        
+        # Track last receive time for p3min timing enforcement
+        self._last_receive_time: Optional[float] = None
     
     def open(self) -> None:
         """Open the transport connection."""
@@ -105,6 +108,7 @@ class KWP2000StarTransport(Transport):
         Send KWP2000 service data over STAR transport.
         
         This method wraps the service data (payload) in a STAR frame and sends it.
+        Enforces p3min timing: waits if not enough time has passed since last receive.
         
         Args:
             data: KWP2000 service data bytes (service ID + data, without STAR framing)
@@ -116,6 +120,17 @@ class KWP2000StarTransport(Transport):
             raise TransportException("Transport not open")
         
         try:
+            # Enforce p3min timing: wait if not enough time has passed since last receive
+            if self._last_receive_time is not None:
+                # p3min is in 0.5 ms units, convert to seconds
+                p3min_seconds = (self.access_timings.p3min * 0.5) / 1000.0
+                elapsed = time.time() - self._last_receive_time
+                
+                if elapsed < p3min_seconds:
+                    wait_time = p3min_seconds - elapsed
+                    self.logger.debug(f"Waiting {wait_time*1000:.1f}ms for p3min timing")
+                    time.sleep(wait_time)
+            
             # Build STAR frame from payload
             star_frame = build_frame(data)
             self.logger.debug(f"Sending STAR frame: {star_frame.hex()}")
@@ -210,6 +225,10 @@ class KWP2000StarTransport(Transport):
             try:
                 payload, = parse_frame(star_frame)
                 self.logger.debug(f"Parsed payload: {payload.hex()}")
+                
+                # Record receive time for p3min timing enforcement
+                self._last_receive_time = time.time()
+                
                 return payload
             except (InvalidFrameException, InvalidChecksumException) as e:
                 raise TransportException(f"Failed to parse STAR frame: {e}") from e
