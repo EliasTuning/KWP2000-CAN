@@ -333,6 +333,8 @@ class KWP2000StarTransport(Transport):
                         if verbose:
                             self.logger.info(f"Response received at {baudrate} baud")
                         found_baudrate = baudrate
+                        time.sleep(0.05)
+                        self._comport_transport._serial.reset_input_buffer()
                         break  # Found working baudrate, exit loop
                         
                     except TimeoutException:
