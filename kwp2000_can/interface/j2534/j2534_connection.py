@@ -144,6 +144,39 @@ class J2534Connection():
         self.rxqueue = queue.Queue()
         self.exit_requested = False
         self.opened = False
+        self._device_closed = False
+
+    def _reconnect_device(self) -> None:
+        """Reconnect to the J2534 device after it was closed."""
+        self.logger.info("Reconnecting to J2534 device...")
+        
+        # Reopen the device
+        result, self.devID = self.interface.PassThruOpen()
+        if result.name == 'ERR_DEVICE_NOT_CONNECTED':
+            raise Exception("Device not connected!")
+        
+        # Reconnect to the channel
+        self.result, self.channelID = self.interface.PassThruConnect(
+            self.devID, self.protocol.value, self.baudrate
+        )
+        
+        # Reset filters and clear RX buffer
+        self.result = self.interface.PassThruStartMsgFilter(
+            self.channelID, self.protocol.value
+        )
+        self.result = self.interface.PassThruIoctl(
+            self.channelID, Ioctl_ID.CLEAR_RX_BUFFER
+        )
+        
+        # Clear local RX queue as well
+        while not self.rxqueue.empty():
+            try:
+                self.rxqueue.get_nowait()
+            except queue.Empty:
+                break
+        
+        self._device_closed = False
+        self.logger.info("J2534 device reconnected successfully")
 
     def reset_cable(self):
         """Reset cable and filters."""
@@ -156,6 +189,10 @@ class J2534Connection():
         )
 
     def open(self):
+        # If device was previously closed, need to reconnect
+        if getattr(self, '_device_closed', False):
+            self._reconnect_device()
+        
         self.exit_requested = False
         self.rxthread = threading.Thread(target=self.rxthread_task)
         self.rxthread.daemon = True
@@ -190,10 +227,12 @@ class J2534Connection():
 
     def close(self):
         self.exit_requested = True
-        self.rxthread.join()
+        if hasattr(self, 'rxthread') and self.rxthread.is_alive():
+            self.rxthread.join(timeout=2.0)
         result = self.interface.PassThruDisconnect(self.channelID)
         result = self.interface.PassThruClose(self.devID)
         self.opened = False
+        self._device_closed = True
         self.logger.info("J2534 Connection closed")
 
     def specific_send(self, payload):

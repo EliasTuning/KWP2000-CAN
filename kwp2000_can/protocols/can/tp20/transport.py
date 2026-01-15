@@ -92,6 +92,8 @@ class TP20Transport(Transport):
         t3: int = 0x32,
         timeout: float = 1.0,
         keepalive_interval_ms: float = 10.0,
+        channel_setup_retries: int = 0,
+        channel_setup_retry_delay: float = 0.5,
     ):
         """
         Initialize TP20 transport.
@@ -106,6 +108,8 @@ class TP20Transport(Transport):
             t3: Timing parameter 3 (default: 0x32)
             timeout: Default timeout in seconds
             keepalive_interval_ms: Interval for channel test (A3) frames (default: 10 ms)
+            channel_setup_retries: Number of retries for channel setup (default: 0)
+            channel_setup_retry_delay: Delay between channel setup retries in seconds (default: 0.5)
         """
         self.can_connection = can_connection
         self.dest = dest
@@ -116,6 +120,8 @@ class TP20Transport(Transport):
         self.t3 = t3
         self.timeout = timeout
         self.keepalive_interval_ms = keepalive_interval_ms
+        self.channel_setup_retries = channel_setup_retries
+        self.channel_setup_retry_delay = channel_setup_retry_delay
         
         # Channel state
         self._is_open = False
@@ -135,6 +141,9 @@ class TP20Transport(Transport):
         
         # Send sequence number (continues across messages)
         self._send_sequence = 0
+        
+        # Timestamp of when the last send operation completed (for T3 enforcement)
+        self._last_send_complete_time: float = 0.0
 
         # Threading primitives
         self._cmd_queue: queue.Queue[_Command] = queue.Queue()
@@ -334,7 +343,10 @@ class TP20Transport(Transport):
         self.can_connection.open()
         self._is_open = True
         try:
-            self._setup_channel()
+            self._setup_channel(
+                retries=self.channel_setup_retries,
+                retry_delay=self.channel_setup_retry_delay
+            )
             self._negotiate_parameters()
             self._start_keepalive()
         except Exception as exc:
@@ -519,9 +531,78 @@ class TP20Transport(Transport):
         self._receive_length = None
         self._receive_sequence = None
         self._send_sequence = 0
+        self._last_send_complete_time = 0.0
         self._clear_queue(self._rx_queue)
         self._keepalive_stop_event.set()
         self._keepalive_thread = None
+
+    def force_reset(self) -> None:
+        """
+        Force-reset the transport without sending disconnect frame.
+        
+        This is useful when the ECU has already rebooted (e.g., into bootloader)
+        and won't respond to a normal TP20 disconnect handshake. It properly
+        stops all threads and resets all state so the transport can be reopened.
+        """
+        import logging
+        logger = logging.getLogger()
+        logger.debug("TP20Transport: Force reset initiated")
+        
+        # Step 1: Stop keepalive thread first
+        self._stop_keepalive()
+        
+        # Step 2: Signal worker to stop BEFORE closing CAN connection
+        # First mark as not open so worker stops polling CAN
+        self._is_open = False
+        self._channel_setup = False
+        
+        # Set stop event and send STOP command
+        self._stop_event.set()
+        if self._worker_thread and self._worker_thread.is_alive():
+            try:
+                self._cmd_queue.put_nowait(_Command(_CommandType.STOP))
+            except queue.Full:
+                pass
+            # Give worker a short time to notice the stop signal
+            self._worker_thread.join(timeout=0.2)
+        
+        # Step 3: Close the CAN connection - this will interrupt any blocking I/O
+        # Do this while worker might still be running, but _is_open=False prevents
+        # the worker from calling recv_can_frame
+        try:
+            self.can_connection.close()
+        except Exception as e:
+            logger.debug(f"TP20Transport: CAN connection close exception (expected): {e}")
+        
+        # Step 4: Wait for worker thread to fully exit (should be quick now)
+        if self._worker_thread and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=2.0)
+            if self._worker_thread.is_alive():
+                logger.warning("TP20Transport: Worker thread did not stop in time")
+        
+        self._worker_thread = None
+        self._stop_event.clear()
+        
+        # Step 5: Clear all queues
+        self._clear_queue(self._cmd_queue)
+        self._clear_queue(self._response_queue)
+        self._clear_queue(self._rx_queue)
+        
+        # Step 6: Reset all internal state
+        self._rx_can_id = None
+        self._tx_can_id = None
+        self._remote_rx_id = None
+        self._remote_tx_id = None
+        self._block_size = None
+        self._t1 = None
+        self._t3 = None
+        self._receive_buffer.clear()
+        self._receive_length = None
+        self._receive_sequence = None
+        self._send_sequence = 0
+        self._last_send_complete_time = 0.0
+        
+        logger.debug("TP20Transport: Force reset complete")
 
     @staticmethod
     def _clear_queue(target_queue: queue.Queue) -> None:
@@ -532,8 +613,43 @@ class TP20Transport(Transport):
         except queue.Empty:
             return
     
-    def _setup_channel(self) -> None:
-        """Setup TP20 channel."""
+    def _setup_channel(self, retries: int = 0, retry_delay: float = 0.5) -> None:
+        """
+        Setup TP20 channel.
+        
+        Args:
+            retries: Number of retry attempts if channel setup fails (default: 0)
+            retry_delay: Delay in seconds between retry attempts (default: 0.5)
+        """
+        import logging
+        logger = logging.getLogger()
+        
+        last_exception: Optional[Exception] = None
+        
+        for attempt in range(retries + 1):
+            if attempt > 0:
+                logger.debug(f"TP20 channel setup retry {attempt}/{retries} after {retry_delay}s delay")
+                time.sleep(retry_delay)
+            
+            try:
+                self._setup_channel_attempt()
+                return  # Success
+            except TP20TimeoutException as e:
+                last_exception = e
+                logger.debug(f"TP20 channel setup attempt {attempt + 1} timed out")
+                continue
+            except TP20ChannelException:
+                # Negative response from ECU - don't retry
+                raise
+        
+        # All retries exhausted
+        raise TP20TimeoutException("Timeout waiting for channel setup response") from last_exception
+
+    def _setup_channel_attempt(self) -> None:
+        """Single attempt to setup TP20 channel."""
+        import logging
+        logger = logging.getLogger()
+        
         # Build setup request
         # According to working example: request tx_id=0x0300 (where ECU should transmit)
         # rx_id is set to invalid (0x0000) so ECU will choose
@@ -563,8 +679,6 @@ class TP20Transport(Transport):
             
             try:
                 dest, rx_id, tx_id, rx_valid, tx_valid, app_type = parse_setup_response(data)
-                import logging
-                logger = logging.getLogger()
                 logger.debug(f"Setup response parsed: dest={dest:02X}, rx_id=0x{rx_id:03X}, tx_id=0x{tx_id:03X}, rx_valid={rx_valid}, tx_valid={tx_valid}, app_type={app_type:02X}")
                 logger.debug(f"Setup response raw data: {data.hex()}")
                 # From ECU's perspective: rx_id is where ECU listens, tx_id is where ECU transmits
@@ -629,6 +743,14 @@ class TP20Transport(Transport):
         if not self._channel_setup:
             raise TP20DisconnectedException("Channel not set up")
         
+        # Enforce T3 delay since last send completed (inter-message timing)
+        if self._t3 is not None and self._last_send_complete_time > 0:
+            elapsed_since_last_send = time.time() - self._last_send_complete_time
+            t3_seconds = self._t3 / 1000.0  # T3 is in milliseconds
+            if elapsed_since_last_send < t3_seconds:
+                wait_time = t3_seconds - elapsed_since_last_send
+                time.sleep(wait_time)
+        
         sequence = self._send_sequence
         offset = 0
         payload_len = len(payload)
@@ -665,6 +787,8 @@ class TP20Transport(Transport):
             # Wait for ACK if needed
             if need_ack:
                 self._wait_for_ack(sequence)
+                # Record time when ACK was received (for T3 enforcement)
+                self._last_send_complete_time = time.time()
             
             # Update for next packet
             offset += chunk_size
@@ -673,16 +797,22 @@ class TP20Transport(Transport):
             if need_ack:
                 block_count = 0
             
-            # Wait T3 between packets
-            if offset < payload_len:
+            # Wait T3 between packets within this message
+            if offset < payload_len and self._t3 is not None:
                 time.sleep(self._t3 / 1000.0)  # T3 is in milliseconds
+        
+        # Mark send complete time for inter-message T3 enforcement
+        self._last_send_complete_time = time.time()
     
     def _wait_for_ack(self, sequence: int) -> None:
-        """Wait for ACK for given sequence number."""
+        """Wait for ACK for given sequence number using T1 timeout."""
         start_time = time.time()
         frames_received = []
         
-        while time.time() - start_time < self.timeout:
+        # Use T1 as ACK timeout if negotiated, otherwise fall back to generic timeout
+        ack_timeout = self._t1 / 1000.0 if self._t1 is not None else self.timeout
+        
+        while time.time() - start_time < ack_timeout:
             frame = self._next_frame(timeout=0.1)
             if frame is None:
                 continue
