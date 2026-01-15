@@ -343,7 +343,7 @@ class KWP2000Client:
         response = self.send_request(request, timeout=timeout)
         return services.AccessTimingParameter.interpret_response(response)
     
-    def startDiagnosticSession(
+    def start_diagnostic_session(
         self,
         diagnostic_mode: Optional[int] = None,
         baudrate_identifier: Optional[int] = None,
@@ -373,7 +373,7 @@ class KWP2000Client:
         response = self.send_request(request, timeout=timeout)
         return services.StartDiagnosticSession.interpret_response(response)
     
-    def readDataByLocalIdentifier(
+    def read_data_by_local_identifier(
         self,
         local_identifier: int,
         timeout: float = 1.0
@@ -402,7 +402,7 @@ class KWP2000Client:
         timeout: float = 1.0
     ) -> dict:
         """
-        Read data by local identifier (alias for readDataByLocalIdentifier).
+        Read data by local identifier (alias for read_data_by_local_identifier).
         
         Args:
             local_identifier: Local identifier to read
@@ -413,9 +413,9 @@ class KWP2000Client:
                 - local_identifier_echo: Echo of the requested local identifier
                 - data: The data bytes read
         """
-        return self.readDataByLocalIdentifier(local_identifier, timeout)
+        return self.read_data_by_local_identifier(local_identifier, timeout)
     
-    def readMemoryByAddress(
+    def read_memory_by_address(
         self,
         memory_address: int,
         memory_size: int,
@@ -451,39 +451,6 @@ class KWP2000Client:
         )
         response = self.send_request(request, timeout=timeout)
         return services.ReadMemoryByAddress.interpret_response(response)
-    
-    def readMemoryByAddress2(
-        self,
-        memory_address: int,
-        memory_type: int,
-        memory_size: int,
-        timeout: float = 1.0
-    ) -> services.ReadMemoryByAddress2.ServiceData:
-        """
-        Read memory by address (variant 2 with memory type).
-        
-        Args:
-            memory_address: Memory address (24-bit, 3 bytes)
-            memory_type: Memory type (1 byte)
-            memory_size: Number of bytes to read (1 byte)
-            timeout: Timeout in seconds
-            
-        Returns:
-            ServiceData with response information containing:
-                - record_values: The memory data read (bytes)
-            
-        Raises:
-            TimeoutException: If timeout occurs
-            NegativeResponseException: If negative response received
-            ValueError: If response is invalid
-        """
-        request = services.ReadMemoryByAddress2.make_request(
-            memory_address=memory_address,
-            memory_type=memory_type,
-            memory_size=memory_size
-        )
-        response = self.send_request(request, timeout=timeout)
-        return services.ReadMemoryByAddress2.interpret_response(response)
     
     def stop_diagnostic_session(self, timeout: float = 1.0) -> dict:
         """
