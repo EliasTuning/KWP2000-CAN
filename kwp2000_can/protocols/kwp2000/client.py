@@ -990,24 +990,98 @@ class KWP2000Client:
     
     def dynamically_define_local_identifier(
         self,
-        sub_function: int,
-        definition_record: bytes,
+        dynamically_defined_local_identifier: int,
+        definitions: Optional[list] = None,
+        clear: bool = False,
         timeout: float = 1.0
     ) -> services.DynamicallyDefineLocalIdentifier.ServiceData:
         """
         Dynamically define local identifier.
         
+        According to ISO/DIS 14230-3, this service allows the client to dynamically
+        define a local identifier that can be used with ReadDataByLocalIdentifier.
+        
+        The service supports three definition modes:
+        1. DefineByLocalIdentifier (0x01): Define using a local identifier
+        2. DefineByCommonIdentifier (0x02): Define using a common identifier
+        3. DefineByMemoryAddress (0x03): Define using a memory address
+        4. Clear (0x04): Clear a previously defined local identifier
+        
+        Multiple definitions can be provided in a single request.
+        
         Args:
-            sub_function: Sub-function (0x01=define by identifier, 0x02=define by memory address, 0x03=clear)
-            definition_record: Definition record bytes
+            dynamically_defined_local_identifier: The local identifier to define/clear
+            definitions: List of definition objects. Can be:
+                - DynamicallyDefineLocalIdentifier.DefineByLocalIdentifier
+                - DynamicallyDefineLocalIdentifier.DefineByCommonIdentifier
+                - DynamicallyDefineLocalIdentifier.DefineByMemoryAddress
+                Multiple definitions can be provided in a single request.
+            clear: If True, clear the dynamically defined local identifier (definitionMode=0x04)
             timeout: Timeout in seconds
             
         Returns:
-            ServiceData with parsed response data
+            ServiceData with parsed response data containing:
+                - dynamically_defined_local_identifier: Echo of the requested local identifier
+            
+        Raises:
+            TimeoutException: If timeout occurs
+            NegativeResponseException: If negative response received
+            ValueError: If invalid parameters provided
+            
+        Example:
+            # Define by local identifier
+            definition = services.DynamicallyDefineLocalIdentifier.DefineByLocalIdentifier(
+                position_in_dynamically_defined_local_identifier=0x00,
+                memory_size=0x02,
+                record_local_identifier=0x21,
+                position_in_record_local_identifier=0x00
+            )
+            client.dynamically_define_local_identifier(
+                dynamically_defined_local_identifier=0xF0,
+                definitions=[definition]
+            )
+            
+            # Define by common identifier
+            definition = services.DynamicallyDefineLocalIdentifier.DefineByCommonIdentifier(
+                position_in_dynamically_defined_local_identifier=0x00,
+                memory_size=0x04,
+                record_common_identifier=0x1234,
+                position_in_record_common_identifier=0x00
+            )
+            client.dynamically_define_local_identifier(
+                dynamically_defined_local_identifier=0xF1,
+                definitions=[definition]
+            )
+            
+            # Define by memory address
+            definition = services.DynamicallyDefineLocalIdentifier.DefineByMemoryAddress(
+                position_in_dynamically_defined_local_identifier=0x00,
+                memory_size=0x10,
+                memory_address=0x123456
+            )
+            client.dynamically_define_local_identifier(
+                dynamically_defined_local_identifier=0xF2,
+                definitions=[definition]
+            )
+            
+            # Multiple definitions in one request
+            def1 = services.DynamicallyDefineLocalIdentifier.DefineByLocalIdentifier(...)
+            def2 = services.DynamicallyDefineLocalIdentifier.DefineByCommonIdentifier(...)
+            client.dynamically_define_local_identifier(
+                dynamically_defined_local_identifier=0xF3,
+                definitions=[def1, def2]
+            )
+            
+            # Clear a dynamically defined local identifier
+            client.dynamically_define_local_identifier(
+                dynamically_defined_local_identifier=0xF0,
+                clear=True
+            )
         """
         request = services.DynamicallyDefineLocalIdentifier.make_request(
-            sub_function=sub_function,
-            definition_record=definition_record
+            dynamically_defined_local_identifier=dynamically_defined_local_identifier,
+            definitions=definitions,
+            clear=clear
         )
         response = self.send_request(request, timeout=timeout)
         return services.DynamicallyDefineLocalIdentifier.interpret_response(response)

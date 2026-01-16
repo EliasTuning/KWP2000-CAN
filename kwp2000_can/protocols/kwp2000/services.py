@@ -2284,44 +2284,151 @@ class ReadEcuIdentification(ServiceBase):
 
 
 class DynamicallyDefineLocalIdentifier(ServiceBase):
-    """DynamicallyDefineLocalIdentifier service (0x2C)."""
+    """DynamicallyDefineLocalIdentifier service (0x2C).
+    
+    According to ISO/DIS 14230-3, this service allows the client to dynamically
+    define a local identifier that can be used with ReadDataByLocalIdentifier.
+    """
     
     SERVICE_ID = SERVICE_DYNAMICALLY_DEFINE_LOCAL_IDENTIFIER
     
-    class SubFunction:
-        """Sub-function constants."""
-        DEFINE_BY_IDENTIFIER = 0x01
-        DEFINE_BY_MEMORY_ADDRESS = 0x02
-        CLEAR_DYNAMICALLY_DEFINED_LOCAL_IDENTIFIER = 0x03
+    class DefinitionMode:
+        """Definition mode constants."""
+        DEFINE_BY_LOCAL_IDENTIFIER = 0x01
+        DEFINE_BY_COMMON_IDENTIFIER = 0x02
+        DEFINE_BY_MEMORY_ADDRESS = 0x03
+        CLEAR_DYNAMICALLY_DEFINED_LOCAL_IDENTIFIER = 0x04
+    
+    @dataclass
+    class DefineByLocalIdentifier:
+        """Definition by local identifier.
+        
+        Args:
+            position_in_dynamically_defined_local_identifier: Position in the dynamically defined local identifier
+            memory_size: Number of data bytes referenced by recordLocalIdentifier
+            record_local_identifier: Local identifier of the record
+            position_in_record_local_identifier: Starting position in the record stored in server's memory
+        """
+        position_in_dynamically_defined_local_identifier: int
+        memory_size: int
+        record_local_identifier: int
+        position_in_record_local_identifier: int
+    
+    @dataclass
+    class DefineByCommonIdentifier:
+        """Definition by common identifier.
+        
+        Args:
+            position_in_dynamically_defined_local_identifier: Position in the dynamically defined local identifier
+            memory_size: Number of data bytes referenced by recordCommonIdentifier
+            record_common_identifier: Common identifier of the record (16-bit)
+            position_in_record_common_identifier: Starting position in the record stored in server's memory
+        """
+        position_in_dynamically_defined_local_identifier: int
+        memory_size: int
+        record_common_identifier: int  # 16-bit
+        position_in_record_common_identifier: int
+    
+    @dataclass
+    class DefineByMemoryAddress:
+        """Definition by memory address.
+        
+        Args:
+            position_in_dynamically_defined_local_identifier: Position in the dynamically defined local identifier
+            memory_size: Number of data bytes starting at memoryAddress
+            memory_address: Start address of data record in server's memory (24-bit)
+        """
+        position_in_dynamically_defined_local_identifier: int
+        memory_size: int
+        memory_address: int  # 24-bit
     
     @dataclass
     class ServiceData:
         """Parsed service data from response."""
-        sub_function_echo: int
+        dynamically_defined_local_identifier: int
     
     @classmethod
     def make_request(
         cls,
-        sub_function: int,
-        definition_record: bytes
+        dynamically_defined_local_identifier: int,
+        definitions: Optional[list] = None,
+        clear: bool = False
     ) -> Request:
         """
         Create a DynamicallyDefineLocalIdentifier request.
         
+        According to ISO/DIS 14230-3:
+        - Byte 1: Service ID (0x2C)
+        - Byte 2: dynamicallyDefinedLocalIdentifier
+        - Bytes 3+: Definition records (if not clearing)
+        
         Args:
-            sub_function: Sub-function (0x01=define by identifier, 0x02=define by memory address, 0x03=clear)
-            definition_record: Definition record bytes
+            dynamically_defined_local_identifier: The local identifier to define/clear
+            definitions: List of definition objects (DefineByLocalIdentifier, DefineByCommonIdentifier, 
+                        or DefineByMemoryAddress). Can contain multiple definitions.
+            clear: If True, clear the dynamically defined local identifier (definitionMode=0x04)
             
         Returns:
             Request object
+            
+        Raises:
+            ValueError: If invalid parameters provided
         """
-        data = bytes([sub_function]) + definition_record
+        if clear:
+            # Clear mode: just service ID + dynamicallyDefinedLocalIdentifier + definitionMode=0x04
+            data = bytes([
+                dynamically_defined_local_identifier,
+                cls.DefinitionMode.CLEAR_DYNAMICALLY_DEFINED_LOCAL_IDENTIFIER
+            ])
+        elif definitions:
+            # Build definition records
+            definition_bytes = bytearray()
+            for definition in definitions:
+                if isinstance(definition, cls.DefineByLocalIdentifier):
+                    definition_bytes.extend([
+                        cls.DefinitionMode.DEFINE_BY_LOCAL_IDENTIFIER,
+                        definition.position_in_dynamically_defined_local_identifier,
+                        definition.memory_size,
+                        definition.record_local_identifier,
+                        definition.position_in_record_local_identifier
+                    ])
+                elif isinstance(definition, cls.DefineByCommonIdentifier):
+                    # Common identifier is 16-bit (high byte, low byte)
+                    definition_bytes.extend([
+                        cls.DefinitionMode.DEFINE_BY_COMMON_IDENTIFIER,
+                        definition.position_in_dynamically_defined_local_identifier,
+                        definition.memory_size,
+                        (definition.record_common_identifier >> 8) & 0xFF,  # High byte
+                        definition.record_common_identifier & 0xFF,  # Low byte
+                        definition.position_in_record_common_identifier
+                    ])
+                elif isinstance(definition, cls.DefineByMemoryAddress):
+                    # Memory address is 24-bit (high, middle, low byte)
+                    definition_bytes.extend([
+                        cls.DefinitionMode.DEFINE_BY_MEMORY_ADDRESS,
+                        definition.position_in_dynamically_defined_local_identifier,
+                        definition.memory_size,
+                        (definition.memory_address >> 16) & 0xFF,  # High byte
+                        (definition.memory_address >> 8) & 0xFF,  # Middle byte
+                        definition.memory_address & 0xFF  # Low byte
+                    ])
+                else:
+                    raise ValueError(f"Invalid definition type: {type(definition)}")
+            
+            data = bytes([dynamically_defined_local_identifier]) + bytes(definition_bytes)
+        else:
+            raise ValueError("Either definitions or clear=True must be provided")
+        
         return Request(cls.SERVICE_ID, data)
     
     @classmethod
     def interpret_response(cls, response: Response) -> 'DynamicallyDefineLocalIdentifier.ServiceData':
         """
         Interpret a DynamicallyDefineLocalIdentifier response.
+        
+        Positive response format (ISO/DIS 14230-3):
+        - Byte 1: Service ID (0x6C = 0x2C + 0x40)
+        - Byte 2: dynamicallyDefinedLocalIdentifier (echo)
         
         Args:
             response: Response object
@@ -2338,7 +2445,9 @@ class DynamicallyDefineLocalIdentifier(ServiceBase):
         if len(response.data) < 1:
             raise ValueError("Invalid response data length: must be at least 1 byte")
         
-        return cls.ServiceData(sub_function_echo=response.data[0])
+        return cls.ServiceData(
+            dynamically_defined_local_identifier=response.data[0]
+        )
 
 
 class EscCode(ServiceBase):
