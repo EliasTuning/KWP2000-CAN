@@ -1,4 +1,5 @@
 """Client class for KWP2000 communication."""
+import logging
 from typing import Optional
 
 from .request import Request
@@ -7,6 +8,9 @@ from .exceptions import TimeoutException, NegativeResponseException
 from .constants import TimingParameters
 from .transport import Transport
 from . import services
+
+# Module-level logger for KWP2000 client debugging
+logger = logging.getLogger(__name__)
 
 
 class KWP2000Client:
@@ -71,17 +75,25 @@ class KWP2000Client:
         # For TP20 transport, send only service data (service ID + data)
         # TP20 handles framing, so KWP2000 headers are not needed
         payload = request.get_data()
+        service_id = payload[0] if payload else 0
+        logger.debug(f"KWP2000 REQUEST: SID=0x{service_id:02X}, data={payload.hex()}")
         self.transport.send(payload)
         
         # Wait for response
+        logger.debug(f"KWP2000 WAITING: timeout={timeout}s")
         response_payload = self.transport.wait_frame(timeout=timeout)
         if response_payload is None:
+            logger.debug(f"KWP2000 TIMEOUT: no response received")
             raise TimeoutException("Timeout waiting for response")
+        
+        logger.debug(f"KWP2000 RESPONSE: data={response_payload.hex()}")
         
         # Parse response
         try:
             response = Response.from_payload(response_payload)
-        except NegativeResponseException:
+            logger.debug(f"KWP2000 PARSED: SID=0x{response.service_id:02X}, positive={response.is_positive}")
+        except NegativeResponseException as e:
+            logger.debug(f"KWP2000 NEGATIVE: {e}")
             raise  # Re-raise negative responses
         
         return response
@@ -252,10 +264,12 @@ class KWP2000Client:
         if response_required == services.TesterPresent.ResponseRequired.NO:
             # Just send the request without waiting for response
             payload = request.get_data()
+            logger.debug(f"KWP2000 TESTER_PRESENT: no response required, data={payload.hex()}")
             self.transport.send(payload)
             return {}
         
         # If response is required, send and wait for response
+        logger.debug(f"KWP2000 TESTER_PRESENT: response required")
         response = self.send_request(request, timeout=timeout)
         return services.TesterPresent.interpret_response(response)
     
