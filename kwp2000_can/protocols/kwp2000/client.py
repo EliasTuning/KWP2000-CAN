@@ -1,5 +1,4 @@
 """Client class for KWP2000 communication."""
-import logging
 from typing import Optional
 
 from .request import Request
@@ -8,9 +7,6 @@ from .exceptions import TimeoutException, NegativeResponseException
 from .constants import TimingParameters
 from .transport import Transport
 from . import services
-
-# Module-level logger for KWP2000 client debugging
-logger = logging.getLogger(__name__)
 
 
 class KWP2000Client:
@@ -75,25 +71,17 @@ class KWP2000Client:
         # For TP20 transport, send only service data (service ID + data)
         # TP20 handles framing, so KWP2000 headers are not needed
         payload = request.get_data()
-        service_id = payload[0] if payload else 0
-        logger.debug(f"KWP2000 REQUEST: SID=0x{service_id:02X}, data={payload.hex()}")
         self.transport.send(payload)
         
         # Wait for response
-        logger.debug(f"KWP2000 WAITING: timeout={timeout}s")
         response_payload = self.transport.wait_frame(timeout=timeout)
         if response_payload is None:
-            logger.debug(f"KWP2000 TIMEOUT: no response received")
             raise TimeoutException("Timeout waiting for response")
-        
-        logger.debug(f"KWP2000 RESPONSE: data={response_payload.hex()}")
         
         # Parse response
         try:
             response = Response.from_payload(response_payload)
-            logger.debug(f"KWP2000 PARSED: SID=0x{response.service_id:02X}, positive={response.is_positive}")
-        except NegativeResponseException as e:
-            logger.debug(f"KWP2000 NEGATIVE: {e}")
+        except NegativeResponseException:
             raise  # Re-raise negative responses
         
         return response
@@ -264,12 +252,10 @@ class KWP2000Client:
         if response_required == services.TesterPresent.ResponseRequired.NO:
             # Just send the request without waiting for response
             payload = request.get_data()
-            logger.debug(f"KWP2000 TESTER_PRESENT: no response required, data={payload.hex()}")
             self.transport.send(payload)
             return {}
         
         # If response is required, send and wait for response
-        logger.debug(f"KWP2000 TESTER_PRESENT: response required")
         response = self.send_request(request, timeout=timeout)
         return services.TesterPresent.interpret_response(response)
     
@@ -360,28 +346,39 @@ class KWP2000Client:
     def start_diagnostic_session(
         self,
         diagnostic_mode: Optional[int] = None,
-        baudrate_identifier: Optional[int] = None,
         session_type: Optional[int] = None,  # Backward compatibility alias
         timeout: float = 1.0
-    ) -> dict:
+    ) -> services.StartDiagnosticSession.ServiceData:
         """
         Start diagnostic session.
         
+        According to ISO 14230-3 section 6.1:
+        - Request: Service ID 0x10 (SDS) + diagnosticMode (1 byte, 0x00-0xFF)
+        - Positive Response: Service ID 0x50 (SDSPR) + diagnosticMode echo (1 byte)
+        
+        The parameter diagnosticMode selects the specific behaviour of the server(s):
+        - 0x00-0x7F: reservedByDocument (reserved by ISO 14230-3 for future definition)
+        - 0x80-0xFF: manufacturerSpecific (reserved for vehicle manufacturer specific use)
+        
         Args:
-            diagnostic_mode: Diagnostic mode (0x81=OBD2, 0x85=ECU Programming, 0x86=ECU Development)
-            baudrate_identifier: Optional baudrate identifier (0x01=9600, 0x02=19200, etc.)
+            diagnostic_mode: Diagnostic mode (0x00-0xFF)
+                - 0x00-0x7F: reservedByDocument
+                - 0x80-0xFF: manufacturerSpecific (e.g., 0x81=OBD2, 0x85=ECU Programming, 0x86=ECU Development)
             session_type: Backward compatibility alias for diagnostic_mode
             timeout: Timeout in seconds
             
         Returns:
-            Dictionary with parsed response data containing:
+            ServiceData with parsed response data containing:
                 - diagnostic_mode: Echo of the requested diagnostic mode
-                - session_type_echo: Backward compatibility alias for diagnostic_mode
-                - baudrate_identifier: Echo of the requested baudrate identifier (if present)
+                - raw_data: Raw hex string for debugging
+            
+        Raises:
+            TimeoutException: If timeout occurs
+            NegativeResponseException: If negative response received
+            ValueError: If response is invalid
         """
         request = services.StartDiagnosticSession.make_request(
             diagnostic_mode=diagnostic_mode,
-            baudrate_identifier=baudrate_identifier,
             session_type=session_type
         )
         response = self.send_request(request, timeout=timeout)
@@ -757,6 +754,35 @@ class KWP2000Client:
         response = self.send_request(request, timeout=timeout)
         return services.StopRoutineByLocalIdentifier.interpret_response(response)
     
+    def start_routine_by_local_identifier(
+        self,
+        local_identifier: int,
+        routine_entry_option: Optional[bytes] = None,
+        timeout: float = 1.0
+    ) -> services.StartRoutineByLocalIdentifier.ServiceData:
+        """
+        Start routine by local identifier.
+        
+        VAG-specific format: Uses 1-byte local identifier (e.g., 0xC4 for flash erase)
+        followed by optional routine entry option data payload.
+        
+        Args:
+            local_identifier: Local identifier (1 byte, e.g., 0xC4 for VAG flash erase)
+            routine_entry_option: Optional routine entry option bytes (payload data)
+            timeout: Timeout in seconds
+            
+        Returns:
+            ServiceData with parsed response data containing:
+                - local_identifier_echo: Echo of the requested local identifier
+                - routine_entry_option: Optional routine entry option from response (e.g., F_Routine timeout)
+        """
+        request = services.StartRoutineByLocalIdentifier.make_request(
+            local_identifier=local_identifier,
+            routine_entry_option=routine_entry_option
+        )
+        response = self.send_request(request, timeout=timeout)
+        return services.StartRoutineByLocalIdentifier.interpret_response(response)
+    
     def request_routine_results_by_local_identifier(
         self,
         routine_id: int,
@@ -990,98 +1016,24 @@ class KWP2000Client:
     
     def dynamically_define_local_identifier(
         self,
-        dynamically_defined_local_identifier: int,
-        definitions: Optional[list] = None,
-        clear: bool = False,
+        sub_function: int,
+        definition_record: bytes,
         timeout: float = 1.0
     ) -> services.DynamicallyDefineLocalIdentifier.ServiceData:
         """
         Dynamically define local identifier.
         
-        According to ISO/DIS 14230-3, this service allows the client to dynamically
-        define a local identifier that can be used with ReadDataByLocalIdentifier.
-        
-        The service supports three definition modes:
-        1. DefineByLocalIdentifier (0x01): Define using a local identifier
-        2. DefineByCommonIdentifier (0x02): Define using a common identifier
-        3. DefineByMemoryAddress (0x03): Define using a memory address
-        4. Clear (0x04): Clear a previously defined local identifier
-        
-        Multiple definitions can be provided in a single request.
-        
         Args:
-            dynamically_defined_local_identifier: The local identifier to define/clear
-            definitions: List of definition objects. Can be:
-                - DynamicallyDefineLocalIdentifier.DefineByLocalIdentifier
-                - DynamicallyDefineLocalIdentifier.DefineByCommonIdentifier
-                - DynamicallyDefineLocalIdentifier.DefineByMemoryAddress
-                Multiple definitions can be provided in a single request.
-            clear: If True, clear the dynamically defined local identifier (definitionMode=0x04)
+            sub_function: Sub-function (0x01=define by identifier, 0x02=define by memory address, 0x03=clear)
+            definition_record: Definition record bytes
             timeout: Timeout in seconds
             
         Returns:
-            ServiceData with parsed response data containing:
-                - dynamically_defined_local_identifier: Echo of the requested local identifier
-            
-        Raises:
-            TimeoutException: If timeout occurs
-            NegativeResponseException: If negative response received
-            ValueError: If invalid parameters provided
-            
-        Example:
-            # Define by local identifier
-            definition = services.DynamicallyDefineLocalIdentifier.DefineByLocalIdentifier(
-                position_in_dynamically_defined_local_identifier=0x00,
-                memory_size=0x02,
-                record_local_identifier=0x21,
-                position_in_record_local_identifier=0x00
-            )
-            client.dynamically_define_local_identifier(
-                dynamically_defined_local_identifier=0xF0,
-                definitions=[definition]
-            )
-            
-            # Define by common identifier
-            definition = services.DynamicallyDefineLocalIdentifier.DefineByCommonIdentifier(
-                position_in_dynamically_defined_local_identifier=0x00,
-                memory_size=0x04,
-                record_common_identifier=0x1234,
-                position_in_record_common_identifier=0x00
-            )
-            client.dynamically_define_local_identifier(
-                dynamically_defined_local_identifier=0xF1,
-                definitions=[definition]
-            )
-            
-            # Define by memory address
-            definition = services.DynamicallyDefineLocalIdentifier.DefineByMemoryAddress(
-                position_in_dynamically_defined_local_identifier=0x00,
-                memory_size=0x10,
-                memory_address=0x123456
-            )
-            client.dynamically_define_local_identifier(
-                dynamically_defined_local_identifier=0xF2,
-                definitions=[definition]
-            )
-            
-            # Multiple definitions in one request
-            def1 = services.DynamicallyDefineLocalIdentifier.DefineByLocalIdentifier(...)
-            def2 = services.DynamicallyDefineLocalIdentifier.DefineByCommonIdentifier(...)
-            client.dynamically_define_local_identifier(
-                dynamically_defined_local_identifier=0xF3,
-                definitions=[def1, def2]
-            )
-            
-            # Clear a dynamically defined local identifier
-            client.dynamically_define_local_identifier(
-                dynamically_defined_local_identifier=0xF0,
-                clear=True
-            )
+            ServiceData with parsed response data
         """
         request = services.DynamicallyDefineLocalIdentifier.make_request(
-            dynamically_defined_local_identifier=dynamically_defined_local_identifier,
-            definitions=definitions,
-            clear=clear
+            sub_function=sub_function,
+            definition_record=definition_record
         )
         response = self.send_request(request, timeout=timeout)
         return services.DynamicallyDefineLocalIdentifier.interpret_response(response)

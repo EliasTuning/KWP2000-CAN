@@ -511,9 +511,21 @@ class SendData(ServiceBase):
 
 
 class StartDiagnosticSession(ServiceBase):
-    """StartDiagnosticSession service (0x10)."""
+    """
+    StartDiagnosticSession service (0x10).
+    
+    According to ISO 14230-3 section 6.1:
+    - Request: Service ID 0x10 (SDS) + diagnosticMode (1 byte, 0x00-0xFF)
+    - Positive Response: Service ID 0x50 (SDSPR) + diagnosticMode echo (1 byte)
+    - Negative Response: Service ID 0x7F (NACK) + Request Service ID 0x10 + responseCode
+    
+    The parameter diagnosticMode is used to select the specific behaviour of the server(s).
+    - 0x00-0x7F: reservedByDocument (reserved by ISO 14230-3 for future definition)
+    - 0x80-0xFF: manufacturerSpecific (reserved for vehicle manufacturer specific use)
+    """
     
     SERVICE_ID = SERVICE_START_DIAGNOSTIC_SESSION
+    POSITIVE_RESPONSE_SERVICE_ID = 0x50  # SDSPR (StartDiagnosticSession Positive Response)
     
     class DiagnosticMode:
         """Diagnostic mode constants."""
@@ -524,29 +536,34 @@ class StartDiagnosticSession(ServiceBase):
     @dataclass
     class ServiceData:
         """Parsed service data from response."""
-        diagnostic_mode: int
-        baudrate_identifier: Optional[int] = None
+        diagnostic_mode: int  # Echo of the requested diagnostic mode (0x00-0xFF)
+        raw_data: str  # Raw hex string for debugging
+        raw_bytes: bytes  # Raw response bytes (includes optional manufacturer-specific data like F_Boot)
     
     @classmethod
     def make_request(
         cls,
-        diagnostic_mode: Optional[int] = None,
-        baudrate_identifier: Optional[int] = None,
+        diagnostic_mode: int,
         session_type: Optional[int] = None  # Backward compatibility alias
     ) -> Request:
         """
         Create a StartDiagnosticSession request.
         
+        According to ISO 14230-3 section 6.1.2.1:
+        - Byte #1: Service ID = 0x10 (SDS)
+        - Byte #2: diagnosticMode (0x00-0x7F reservedByDocument, 0x80-0xFF manufacturerSpecific)
+        
         Args:
-            diagnostic_mode: Diagnostic mode (0x81=OBD2, 0x85=ECU Programming, 0x86=ECU Development)
-            baudrate_identifier: Optional baudrate identifier (0x01=9600, 0x02=19200, etc.)
+            diagnostic_mode: Diagnostic mode (0x00-0xFF)
+                - 0x00-0x7F: reservedByDocument (reserved by ISO 14230-3)
+                - 0x80-0xFF: manufacturerSpecific (e.g., 0x81=OBD2, 0x85=ECU Programming, 0x86=ECU Development)
             session_type: Backward compatibility alias for diagnostic_mode
             
         Returns:
             Request object
             
         Raises:
-            ValueError: If neither diagnostic_mode nor session_type is provided
+            ValueError: If diagnostic_mode is not provided or out of range
         """
         # Support backward compatibility: if session_type is provided, use it as diagnostic_mode
         if session_type is not None:
@@ -555,26 +572,36 @@ class StartDiagnosticSession(ServiceBase):
         if diagnostic_mode is None:
             raise ValueError("diagnostic_mode or session_type must be provided")
         
-        # Build request data: diagnosticMode (mandatory) + baudrateIdentifier (optional)
+        if not (0x00 <= diagnostic_mode <= 0xFF):
+            raise ValueError(f"diagnostic_mode must be in range 0x00-0xFF, got 0x{diagnostic_mode:02X}")
+        
+        # Build request data: diagnosticMode (mandatory, 1 byte)
         data = bytes([diagnostic_mode])
-        if baudrate_identifier is not None:
-            data += bytes([baudrate_identifier])
         
         return Request(cls.SERVICE_ID, data)
     
     @classmethod
-    def interpret_response(cls, response: Response) -> dict:
+    def interpret_response(cls, response: Response) -> 'StartDiagnosticSession.ServiceData':
         """
         Interpret a StartDiagnosticSession response.
+        
+        According to ISO 14230-3 section 6.1.2.2:
+        Positive Response format:
+        - Byte #1: Service ID = 0x50 (SDSPR)
+        - Byte #2: diagnosticMode echo (0x00-0xFF)
+        
+        Negative Response format (handled by Response class):
+        - Byte #1: Service ID = 0x7F (NACK)
+        - Byte #2: Request Service ID = 0x10 (SDS)
+        - Byte #3: responseCode (0x00-0xFF)
         
         Args:
             response: Response object
             
         Returns:
-            Dictionary with parsed response data containing:
+            ServiceData with parsed response data containing:
                 - diagnostic_mode: Echo of the requested diagnostic mode
-                - baudrate_identifier: Echo of the requested baudrate identifier (if present)
-                - session_type_echo: Backward compatibility alias for diagnostic_mode
+                - raw_data: Raw hex string for debugging
             
         Raises:
             ValueError: If response data is invalid
@@ -582,24 +609,28 @@ class StartDiagnosticSession(ServiceBase):
         if not response.is_positive():
             raise ValueError("Response is not positive")
         
+        # Validate response service ID (should be 0x50 = SDSPR)
+        if response.service != cls.POSITIVE_RESPONSE_SERVICE_ID:
+            raise ValueError(
+                f"Invalid positive response service ID: expected 0x{cls.POSITIVE_RESPONSE_SERVICE_ID:02X} (SDSPR), "
+                f"got 0x{response.service:02X}"
+            )
+        
+        # Positive response must have at least 1 byte (diagnosticMode echo)
         if len(response.data) < 1:
             raise ValueError("Invalid response data length: must be at least 1 byte")
         
         diagnostic_mode = response.data[0]
-        baudrate_identifier = None
         
-        if len(response.data) >= 2:
-            baudrate_identifier = response.data[1]
+        # Validate diagnostic_mode range
+        if not (0x00 <= diagnostic_mode <= 0xFF):
+            raise ValueError(f"Invalid diagnostic_mode in response: 0x{diagnostic_mode:02X}")
         
-        result = {
-            'diagnostic_mode': diagnostic_mode,
-            'session_type_echo': diagnostic_mode  # Backward compatibility
-        }
-        
-        if baudrate_identifier is not None:
-            result['baudrate_identifier'] = baudrate_identifier
-        
-        return result
+        return cls.ServiceData(
+            diagnostic_mode=diagnostic_mode,
+            raw_data=response.data.hex(),
+            raw_bytes=response.data
+        )
 
 
 class ReadDataByLocalIdentifier(ServiceBase):
@@ -1560,6 +1591,75 @@ class InputOutputControlByLocalIdentifier(ServiceBase):
 # Routine Control Services (Extended)
 # ============================================================================
 
+class StartRoutineByLocalIdentifier(ServiceBase):
+    """StartRoutineByLocalIdentifier service (0x31).
+    
+    VAG-specific format: Uses 1-byte local identifier followed by optional routine entry option data.
+    This is different from the UDS-style RoutineControl service which uses control_type + 2-byte routine_id.
+    """
+    
+    SERVICE_ID = SERVICE_ROUTINE_CONTROL  # 0x31
+    
+    @dataclass
+    class ServiceData:
+        """Parsed service data from response."""
+        local_identifier_echo: int
+        routine_entry_option: Optional[bytes] = None
+    
+    @classmethod
+    def make_request(
+        cls,
+        local_identifier: int,
+        routine_entry_option: Optional[bytes] = None
+    ) -> Request:
+        """
+        Create a StartRoutineByLocalIdentifier request.
+        
+        Args:
+            local_identifier: Local identifier (1 byte, e.g., 0xC4 for VAG flash erase)
+            routine_entry_option: Optional routine entry option bytes (payload data)
+            
+        Returns:
+            Request object
+        """
+        if local_identifier < 0 or local_identifier > 0xFF:
+            raise ValueError(f"Local identifier must be 1 byte (0-255), got {local_identifier}")
+        
+        data = bytes([local_identifier])
+        if routine_entry_option:
+            data += routine_entry_option
+        
+        return Request(cls.SERVICE_ID, data)
+    
+    @classmethod
+    def interpret_response(cls, response: Response) -> 'StartRoutineByLocalIdentifier.ServiceData':
+        """
+        Interpret a StartRoutineByLocalIdentifier response.
+        
+        Args:
+            response: Response object
+            
+        Returns:
+            ServiceData with parsed response data
+            
+        Raises:
+            ValueError: If response data is invalid
+        """
+        if not response.is_positive():
+            raise ValueError("Response is not positive")
+        
+        if len(response.data) < 1:
+            raise ValueError("Invalid response data length: must be at least 1 byte")
+        
+        local_identifier_echo = response.data[0]
+        routine_entry_option = response.data[1:] if len(response.data) > 1 else None
+        
+        return cls.ServiceData(
+            local_identifier_echo=local_identifier_echo,
+            routine_entry_option=routine_entry_option
+        )
+
+
 class StopRoutineByLocalIdentifier(ServiceBase):
     """StopRoutineByLocalIdentifier service (0x32)."""
     
@@ -2284,151 +2384,44 @@ class ReadEcuIdentification(ServiceBase):
 
 
 class DynamicallyDefineLocalIdentifier(ServiceBase):
-    """DynamicallyDefineLocalIdentifier service (0x2C).
-    
-    According to ISO/DIS 14230-3, this service allows the client to dynamically
-    define a local identifier that can be used with ReadDataByLocalIdentifier.
-    """
+    """DynamicallyDefineLocalIdentifier service (0x2C)."""
     
     SERVICE_ID = SERVICE_DYNAMICALLY_DEFINE_LOCAL_IDENTIFIER
     
-    class DefinitionMode:
-        """Definition mode constants."""
-        DEFINE_BY_LOCAL_IDENTIFIER = 0x01
-        DEFINE_BY_COMMON_IDENTIFIER = 0x02
-        DEFINE_BY_MEMORY_ADDRESS = 0x03
-        CLEAR_DYNAMICALLY_DEFINED_LOCAL_IDENTIFIER = 0x04
-    
-    @dataclass
-    class DefineByLocalIdentifier:
-        """Definition by local identifier.
-        
-        Args:
-            position_in_dynamically_defined_local_identifier: Position in the dynamically defined local identifier
-            memory_size: Number of data bytes referenced by recordLocalIdentifier
-            record_local_identifier: Local identifier of the record
-            position_in_record_local_identifier: Starting position in the record stored in server's memory
-        """
-        position_in_dynamically_defined_local_identifier: int
-        memory_size: int
-        record_local_identifier: int
-        position_in_record_local_identifier: int
-    
-    @dataclass
-    class DefineByCommonIdentifier:
-        """Definition by common identifier.
-        
-        Args:
-            position_in_dynamically_defined_local_identifier: Position in the dynamically defined local identifier
-            memory_size: Number of data bytes referenced by recordCommonIdentifier
-            record_common_identifier: Common identifier of the record (16-bit)
-            position_in_record_common_identifier: Starting position in the record stored in server's memory
-        """
-        position_in_dynamically_defined_local_identifier: int
-        memory_size: int
-        record_common_identifier: int  # 16-bit
-        position_in_record_common_identifier: int
-    
-    @dataclass
-    class DefineByMemoryAddress:
-        """Definition by memory address.
-        
-        Args:
-            position_in_dynamically_defined_local_identifier: Position in the dynamically defined local identifier
-            memory_size: Number of data bytes starting at memoryAddress
-            memory_address: Start address of data record in server's memory (24-bit)
-        """
-        position_in_dynamically_defined_local_identifier: int
-        memory_size: int
-        memory_address: int  # 24-bit
+    class SubFunction:
+        """Sub-function constants."""
+        DEFINE_BY_IDENTIFIER = 0x01
+        DEFINE_BY_MEMORY_ADDRESS = 0x02
+        CLEAR_DYNAMICALLY_DEFINED_LOCAL_IDENTIFIER = 0x03
     
     @dataclass
     class ServiceData:
         """Parsed service data from response."""
-        dynamically_defined_local_identifier: int
+        sub_function_echo: int
     
     @classmethod
     def make_request(
         cls,
-        dynamically_defined_local_identifier: int,
-        definitions: Optional[list] = None,
-        clear: bool = False
+        sub_function: int,
+        definition_record: bytes
     ) -> Request:
         """
         Create a DynamicallyDefineLocalIdentifier request.
         
-        According to ISO/DIS 14230-3:
-        - Byte 1: Service ID (0x2C)
-        - Byte 2: dynamicallyDefinedLocalIdentifier
-        - Bytes 3+: Definition records (if not clearing)
-        
         Args:
-            dynamically_defined_local_identifier: The local identifier to define/clear
-            definitions: List of definition objects (DefineByLocalIdentifier, DefineByCommonIdentifier, 
-                        or DefineByMemoryAddress). Can contain multiple definitions.
-            clear: If True, clear the dynamically defined local identifier (definitionMode=0x04)
+            sub_function: Sub-function (0x01=define by identifier, 0x02=define by memory address, 0x03=clear)
+            definition_record: Definition record bytes
             
         Returns:
             Request object
-            
-        Raises:
-            ValueError: If invalid parameters provided
         """
-        if clear:
-            # Clear mode: just service ID + dynamicallyDefinedLocalIdentifier + definitionMode=0x04
-            data = bytes([
-                dynamically_defined_local_identifier,
-                cls.DefinitionMode.CLEAR_DYNAMICALLY_DEFINED_LOCAL_IDENTIFIER
-            ])
-        elif definitions:
-            # Build definition records
-            definition_bytes = bytearray()
-            for definition in definitions:
-                if isinstance(definition, cls.DefineByLocalIdentifier):
-                    definition_bytes.extend([
-                        cls.DefinitionMode.DEFINE_BY_LOCAL_IDENTIFIER,
-                        definition.position_in_dynamically_defined_local_identifier,
-                        definition.memory_size,
-                        definition.record_local_identifier,
-                        definition.position_in_record_local_identifier
-                    ])
-                elif isinstance(definition, cls.DefineByCommonIdentifier):
-                    # Common identifier is 16-bit (high byte, low byte)
-                    definition_bytes.extend([
-                        cls.DefinitionMode.DEFINE_BY_COMMON_IDENTIFIER,
-                        definition.position_in_dynamically_defined_local_identifier,
-                        definition.memory_size,
-                        (definition.record_common_identifier >> 8) & 0xFF,  # High byte
-                        definition.record_common_identifier & 0xFF,  # Low byte
-                        definition.position_in_record_common_identifier
-                    ])
-                elif isinstance(definition, cls.DefineByMemoryAddress):
-                    # Memory address is 24-bit (high, middle, low byte)
-                    definition_bytes.extend([
-                        cls.DefinitionMode.DEFINE_BY_MEMORY_ADDRESS,
-                        definition.position_in_dynamically_defined_local_identifier,
-                        definition.memory_size,
-                        (definition.memory_address >> 16) & 0xFF,  # High byte
-                        (definition.memory_address >> 8) & 0xFF,  # Middle byte
-                        definition.memory_address & 0xFF  # Low byte
-                    ])
-                else:
-                    raise ValueError(f"Invalid definition type: {type(definition)}")
-            
-            data = bytes([dynamically_defined_local_identifier]) + bytes(definition_bytes)
-        else:
-            raise ValueError("Either definitions or clear=True must be provided")
-        
+        data = bytes([sub_function]) + definition_record
         return Request(cls.SERVICE_ID, data)
     
     @classmethod
     def interpret_response(cls, response: Response) -> 'DynamicallyDefineLocalIdentifier.ServiceData':
         """
         Interpret a DynamicallyDefineLocalIdentifier response.
-        
-        Positive response format (ISO/DIS 14230-3):
-        - Byte 1: Service ID (0x6C = 0x2C + 0x40)
-        - Byte 2: dynamicallyDefinedLocalIdentifier (echo)
         
         Args:
             response: Response object
@@ -2445,9 +2438,7 @@ class DynamicallyDefineLocalIdentifier(ServiceBase):
         if len(response.data) < 1:
             raise ValueError("Invalid response data length: must be at least 1 byte")
         
-        return cls.ServiceData(
-            dynamically_defined_local_identifier=response.data[0]
-        )
+        return cls.ServiceData(sub_function_echo=response.data[0])
 
 
 class EscCode(ServiceBase):

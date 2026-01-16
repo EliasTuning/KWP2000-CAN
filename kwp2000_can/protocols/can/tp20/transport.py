@@ -1,11 +1,16 @@
 """TP20 transport layer for sending and receiving byte data over CAN."""
 
+import logging
 import queue
 import threading
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional
+
+# Module-level logger for TP20 transport debugging
+logger = logging.getLogger("TP20")
+logger.setLevel(logging.ERROR)
 
 from .constants import (
     CAN_ID_SETUP_REQUEST,
@@ -22,6 +27,7 @@ from .constants import (
     OPCODE_CHANNEL_TEST,
     OPCODE_BREAK,
     OPCODE_DISCONNECT,
+    OPCODE_PARAMETERS_RESPONSE,
 )
 from .exceptions import (
     TP20ChannelException,
@@ -379,12 +385,15 @@ class TP20Transport(Transport):
         if not self._channel_setup:
             raise TP20DisconnectedException("Channel not set up")
 
+        logger.debug(f"TP20 SEND: {len(data)} bytes: {data.hex()}")
+        
         length = len(data)
         payload = bytearray()
         payload.append((length >> 8) & 0xFF)
         payload.append(length & 0xFF)
         payload.extend(data)
         self._send_segmented(payload)
+        logger.debug(f"TP20 SEND complete")
 
     def _do_recv(self, timeout: float) -> Optional[bytes]:
         if not self._is_open:
@@ -392,6 +401,7 @@ class TP20Transport(Transport):
         if not self._channel_setup:
             raise TP20DisconnectedException("Channel not set up")
 
+        logger.debug(f"TP20 RECV: waiting with timeout={timeout}s")
         start_time = time.time()
         self._receive_buffer.clear()
         self._receive_length = None
@@ -400,6 +410,7 @@ class TP20Transport(Transport):
         while True:
             elapsed = time.time() - start_time
             if elapsed >= timeout:
+                logger.debug(f"TP20 RECV: timeout after {elapsed:.3f}s")
                 raise TP20TimeoutException("Timeout waiting for frame")
 
             remaining_timeout = timeout - elapsed
@@ -409,20 +420,31 @@ class TP20Transport(Transport):
 
             can_id, data = frame
             if can_id != self._rx_can_id:
+                #logger.debug(f"TP20 RECV: ignoring frame on CAN ID 0x{can_id:03X} (expected 0x{self._rx_can_id:03X})")
                 continue
+
+            logger.debug(f"TP20 RECV: {self._format_frame(can_id, data)}")
 
             if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
                 # Internal keep-alive, do not surface
                 continue
             if len(data) == 1 and data[0] == 0xA8:
+                logger.debug("TP20 RECV: received disconnect (A8)")
                 raise TP20DisconnectedException("Received A8")
+            
+            # Check for parameters update from ECU (0xA1 opcode)
+            if self._handle_parameters_update(data):
+                # Parameters were updated, continue waiting for data
+                continue
 
             try:
                 opcode, sequence, payload = parse_data_frame(data)
             except ValueError:
+                logger.debug(f"TP20 RECV: failed to parse data frame: {data.hex()}")
                 continue
 
             if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY):
+                logger.debug(f"TP20 RECV: ignoring ACK frame during receive")
                 continue
 
             if opcode in (
@@ -434,6 +456,7 @@ class TP20Transport(Transport):
                 if self._receive_sequence is not None:
                     expected_seq = (self._receive_sequence + 1) & SEQ_MASK
                     if sequence != expected_seq:
+                        logger.debug(f"TP20 RECV: sequence mismatch (got {sequence}, expected {expected_seq}), resetting buffer")
                         self._receive_buffer.clear()
                         self._receive_length = None
                         self._receive_sequence = None
@@ -444,15 +467,18 @@ class TP20Transport(Transport):
                     self._receive_length = (payload[0] << 8) | payload[1]
                     self._receive_buffer.extend(payload[2:])
                     self._receive_sequence = sequence
+                    logger.debug(f"TP20 RECV: started message, total length={self._receive_length}, have {len(self._receive_buffer)} bytes")
                 else:
                     self._receive_buffer.extend(payload)
                     self._receive_sequence = sequence
+                    logger.debug(f"TP20 RECV: continued message, have {len(self._receive_buffer)}/{self._receive_length} bytes")
 
                 if opcode in (DATA_OP_WAIT_ACK_MORE, DATA_OP_WAIT_ACK_LAST):
                     ack_sequence = (sequence + 1) & SEQ_MASK
                     ack_frame = build_data_frame(
                         DATA_OP_ACK_READY, ack_sequence, b""
                     )
+                    logger.debug(f"TP20 RECV: sending ACK seq={ack_sequence}")
                     self.can_connection.send_can_frame(self._tx_can_id, ack_frame)
 
                 if (
@@ -465,6 +491,7 @@ class TP20Transport(Transport):
                     self._receive_buffer.clear()
                     self._receive_length = None
                     self._receive_sequence = None
+                    logger.debug(f"TP20 RECV complete: {len(received_data)} bytes: {received_data.hex()}")
                     return received_data
 
     def _do_stop(self) -> None:
@@ -544,8 +571,6 @@ class TP20Transport(Transport):
         and won't respond to a normal TP20 disconnect handshake. It properly
         stops all threads and resets all state so the transport can be reopened.
         """
-        import logging
-        logger = logging.getLogger()
         logger.debug("TP20Transport: Force reset initiated")
         
         # Step 1: Stop keepalive thread first
@@ -621,9 +646,6 @@ class TP20Transport(Transport):
             retries: Number of retry attempts if channel setup fails (default: 0)
             retry_delay: Delay in seconds between retry attempts (default: 0.5)
         """
-        import logging
-        logger = logging.getLogger()
-        
         last_exception: Optional[Exception] = None
         
         for attempt in range(retries + 1):
@@ -647,9 +669,6 @@ class TP20Transport(Transport):
 
     def _setup_channel_attempt(self) -> None:
         """Single attempt to setup TP20 channel."""
-        import logging
-        logger = logging.getLogger()
-        
         # Build setup request
         # According to working example: request tx_id=0x0300 (where ECU should transmit)
         # rx_id is set to invalid (0x0000) so ECU will choose
@@ -712,6 +731,8 @@ class TP20Transport(Transport):
             t3=self.t3
         )
         
+        logger.debug(f"TP20 PARAMS: sending request (block_size={self.block_size}, t1=0x{self.t1:02X}, t3=0x{self.t3:02X})")
+        
         # Send parameters request
         self.can_connection.send_can_frame(self._tx_can_id, params_req)
         
@@ -732,11 +753,39 @@ class TP20Transport(Transport):
                 self._block_size = block_size
                 self._t1 = t1
                 self._t3 = t3
+                logger.debug(f"TP20 PARAMS: negotiated block_size={block_size}, T1={t1}ms, T2={t2}ms, T3={t3}ms, T4={t4}ms")
                 return
             except ValueError:
                 continue
         
         raise TP20TimeoutException("Timeout waiting for parameters response")
+    
+    def _handle_parameters_update(self, data: bytes) -> bool:
+        """
+        Check if data is a parameters response and update timing if so.
+        
+        Args:
+            data: Raw frame data
+            
+        Returns:
+            True if this was a parameters response and was handled, False otherwise
+        """
+        if len(data) != 6:
+            return False
+        if data[0] != OPCODE_PARAMETERS_RESPONSE:
+            return False
+        
+        try:
+            block_size, t1, t2, t3, t4 = parse_parameters_response(data)
+            old_block_size, old_t1, old_t3 = self._block_size, self._t1, self._t3
+            self._block_size = block_size
+            self._t1 = t1
+            self._t3 = t3
+            logger.info(f"TP20 PARAMS UPDATE: block_size={old_block_size}->{block_size}, "
+                       f"T1={old_t1}->{t1}ms, T3={old_t3}->{t3}ms")
+            return True
+        except ValueError:
+            return False
     
     def _send_segmented(self, payload: bytearray) -> None:
         """Send payload segmented into TP20 data frames."""
@@ -749,12 +798,22 @@ class TP20Transport(Transport):
             t3_seconds = self._t3 / 1000.0  # T3 is in milliseconds
             if elapsed_since_last_send < t3_seconds:
                 wait_time = t3_seconds - elapsed_since_last_send
+                logger.debug(f"TP20 SEND: waiting {wait_time*1000:.1f}ms for T3 inter-message delay")
                 time.sleep(wait_time)
         
         sequence = self._send_sequence
         offset = 0
         payload_len = len(payload)
         block_count = 0
+        
+        opcode_names = {
+            DATA_OP_WAIT_ACK_MORE: "WAIT_ACK_MORE",
+            DATA_OP_WAIT_ACK_LAST: "WAIT_ACK_LAST",
+            DATA_OP_NO_ACK_MORE: "NO_ACK_MORE",
+            DATA_OP_NO_ACK_LAST: "NO_ACK_LAST",
+        }
+        
+        logger.debug(f"TP20 SEND segmented: {payload_len} bytes, block_size={self._block_size}, T1={self._t1}ms, T3={self._t3}ms")
         
         while offset < payload_len:
             # Determine how much to send in this packet (max 7 bytes after opcode+seq)
@@ -782,11 +841,14 @@ class TP20Transport(Transport):
             
             # Build and send data frame
             data_frame = build_data_frame(opcode, sequence, chunk)
+            logger.debug(f"TP20 TX: seq={sequence}, op={opcode_names.get(opcode, opcode)}, data={data_frame.hex()}")
             self.can_connection.send_can_frame(self._tx_can_id, data_frame)
             
             # Wait for ACK if needed
             if need_ack:
+                logger.debug(f"TP20 SEND: waiting for ACK (seq={sequence})")
                 self._wait_for_ack(sequence)
+                logger.debug(f"TP20 SEND: got ACK")
                 # Record time when ACK was received (for T3 enforcement)
                 self._last_send_complete_time = time.time()
             
@@ -799,10 +861,12 @@ class TP20Transport(Transport):
             
             # Wait T3 between packets within this message
             if offset < payload_len and self._t3 is not None:
+                logger.debug(f"TP20 SEND: waiting T3={self._t3}ms between packets")
                 time.sleep(self._t3 / 1000.0)  # T3 is in milliseconds
         
         # Mark send complete time for inter-message T3 enforcement
         self._last_send_complete_time = time.time()
+        logger.debug(f"TP20 SEND segmented complete")
     
     def _wait_for_ack(self, sequence: int) -> None:
         """Wait for ACK for given sequence number using T1 timeout."""
@@ -811,6 +875,9 @@ class TP20Transport(Transport):
         
         # Use T1 as ACK timeout if negotiated, otherwise fall back to generic timeout
         ack_timeout = self._t1 / 1000.0 if self._t1 is not None else self.timeout
+        expected_ack_seq = (sequence + 1) & SEQ_MASK
+        
+        logger.debug(f"TP20 ACK: waiting for ACK seq={expected_ack_seq} (sent seq={sequence}), timeout={ack_timeout:.3f}s")
         
         while time.time() - start_time < ack_timeout:
             frame = self._next_frame(timeout=0.1)
@@ -818,46 +885,55 @@ class TP20Transport(Transport):
                 continue
             
             can_id, data = frame
-
             
             if can_id != self._rx_can_id:
-                # Log unexpected CAN IDs for debugging
-                import logging
-                logger = logging.getLogger()
-                logger.debug(f"Received frame on unexpected CAN ID: 0x{can_id:03X} (expected 0x{self._rx_can_id:03X}), data: {data.hex()}")
+                #logger.debug(f"TP20 ACK: ignoring frame on CAN ID 0x{can_id:03X} (expected 0x{self._rx_can_id:03X}), data: {data.hex()}")
                 continue
             if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
                 # Ignore keep-alive echoes
                 continue
+            
             frames_received.append((can_id, data))
+            logger.debug(f"TP20 ACK: received {self._format_frame(can_id, data)}")
+            
+            # Check for disconnect
+            if len(data) == 1 and data[0] == 0xA8:
+                logger.debug("TP20 ACK: received disconnect (A8)")
+                raise TP20DisconnectedException("Received A8")
+            
+            # Check for parameters update from ECU (0xA1 opcode)
+            if self._handle_parameters_update(data):
+                # Parameters were updated, continue waiting for ACK
+                continue
+            
             try:
-                if len(data) == 1 and data[0] == 0xA8:
-                    raise TP20DisconnectedException("Received A8")
-                    break
-
                 opcode, seq, _ = parse_data_frame(data)
                 # ACK sequence number is the NEXT sequence number (sequence + 1)
                 # So if we sent sequence 0, we expect ACK with sequence 1
-                expected_ack_seq = (sequence + 1) & SEQ_MASK
-                if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY) and seq == expected_ack_seq:
-                    if opcode == DATA_OP_ACK_NOT_READY:
-                        # Wait a bit more
-                        time.sleep(0.01)
-                        continue
-                    return
-            except ValueError:
+                if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY):
+                    if seq == expected_ack_seq:
+                        if opcode == DATA_OP_ACK_NOT_READY:
+                            logger.debug(f"TP20 ACK: receiver not ready, waiting...")
+                            time.sleep(0.01)
+                            continue
+                        logger.debug(f"TP20 ACK: got ACK READY seq={seq}")
+                        return
+                    else:
+                        logger.debug(f"TP20 ACK: seq mismatch (got {seq}, expected {expected_ack_seq})")
+            except ValueError as e:
+                logger.debug(f"TP20 ACK: failed to parse frame: {e}")
                 continue
         
         # Log what we received before timeout
-        import logging
-        logger = logging.getLogger()
+        elapsed = time.time() - start_time
         formatted_frames = "\n".join(
             self._format_frame(cid, fdata) for cid, fdata in frames_received
         ) or "<none>"
-        logger.warning(
-            "Timeout waiting for ACK sequence %s. Expected CAN ID: 0x%03X. "
+        logger.error(
+            "Timeout waiting for ACK sequence %s after %.3fs. Expected CAN ID: 0x%03X. "
             "Received frames:\n%s",
             sequence,
+            elapsed,
             self._rx_can_id,
             formatted_frames,
         )
