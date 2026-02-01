@@ -9,7 +9,8 @@ For production use, import directly from the package:
 
 import logging
 
-from kwp2000_can.protocols.serial.ds2 import DS2Client, ComportTransport, MOTRONIC
+from kwp2000_can.interface.serial import ComportTransport
+from kwp2000_can.protocols.serial.ds2 import DS2Client, MOTRONIC, IKE
 
 try:
     import serial
@@ -44,7 +45,8 @@ if __name__ == "__main__":
         port=COM_PORT,
         baudrate=BAUD_RATE,
         timeout=1.0,
-        parity=serial.PARITY_EVEN  # DS2 uses even parity
+        parity=serial.PARITY_EVEN,  # DS2 uses even parity
+        stopbits=serial.STOPBITS_TWO,
     )
     
     client = DS2Client(transport)
@@ -57,22 +59,19 @@ if __name__ == "__main__":
             # Example: Read memory
             print("\nReading memory...")
             try:
-                result = client.ident(address=MOTRONIC)
+                result = client.ident(address=IKE)
                 print(f"Identification data: {result['data']}")
 
                 # Read 16 bytes from EEPROM at address 0x000000
-                memory_address = 0x005b9464
+                memory_address = 0x0
                 result = client.read_memory_by_name(
-                    address=MOTRONIC,
-                    memory_type_name="rom",
+                    address=IKE,
+                    memory_type_name="eeprom",
                     memory_address=memory_address,
-                    memory_size=2
+                    memory_size=4
                 )
-                print(f"Memory address echo: 0x{result.address_echo:08X}")
-                print(f"Memory type echo: 0x{result.memory_type_echo:02X}")
-                print(f"Size echo: {result.size_echo}")
                 print(f"Memory data ({len(result.memory_data)} bytes): {result.memory_data.hex()}")
-                print(f"Memory data (hex): {' '.join(f'{b:02X}' for b in result.memory_data)}")
+
             except Exception as e:
                 print(f"Error reading memory: {e}")
 

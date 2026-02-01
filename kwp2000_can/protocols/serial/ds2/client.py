@@ -47,7 +47,7 @@ class DS2Client:
         self.transport.close()
         self._is_open = False
     
-    def send_request(self, request: Request, timeout: float = 5.0) -> Response:
+    def send_request(self, request: Request, timeout: float = 0.1) -> Response:
         """
         Send a request and wait for response.
         
@@ -72,12 +72,7 @@ class DS2Client:
         # Send request
         frame = request.get_frame()
         self.transport.send(frame)
-        
-        # Read echo (as done in original implementation)
-        echo = self.transport.wait_frame(timeout=timeout)
-        if echo is None:
-            raise TimeoutException("Timeout waiting for echo")
-        
+
         # Wait for reply
         # Set timeout for reply (as done in original implementation)
         reply = self.transport.wait_frame(timeout=timeout)
@@ -92,7 +87,6 @@ class DS2Client:
     def ident(
         self,
         address: int,
-        timeout: float = 5.0
     ) -> dict:
         """
         Request ECU identification.
@@ -105,7 +99,7 @@ class DS2Client:
             Dictionary with response data containing identification information
         """
         request = services.Ident.make_request(address=address)
-        response = self.send_request(request, timeout=timeout)
+        response = self.send_request(request)
         return services.Ident.interpret_response(response)
     
     def read_memory(
@@ -114,7 +108,6 @@ class DS2Client:
         memory_type: int,
         memory_address: int,
         memory_size: int = 1,
-        timeout: float = 5.0
     ) -> services.ReadMemory.ServiceData:
         """
         Read memory by address.
@@ -137,9 +130,9 @@ class DS2Client:
             address=address,
             memory_type=memory_type,
             memory_address=memory_address,
-            memory_size=memory_size
+            memory_size=int(memory_size / 2)
         )
-        response = self.send_request(request, timeout=timeout)
+        response = self.send_request(request)
         return services.ReadMemory.interpret_response(response)
     
     def write_memory(
@@ -203,7 +196,6 @@ class DS2Client:
             memory_type=memory_type,
             memory_address=memory_address,
             memory_size=memory_size,
-            timeout=timeout
         )
     
     def write_memory_by_name(

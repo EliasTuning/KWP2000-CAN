@@ -34,9 +34,6 @@ class ReadMemory(ServiceBase):
     class ServiceData:
         """Parsed service data from response."""
         memory_data: bytes
-        memory_type_echo: int
-        address_echo: int
-        size_echo: int
     
     @classmethod
     def make_request(
@@ -84,24 +81,13 @@ class ReadMemory(ServiceBase):
         if not response.is_positive():
             raise ValueError("Response is not positive")
         
-        if len(response.data) < 5:
-            raise ValueError("Invalid response data length: must be at least 5 bytes")
-        
-        memory_type_echo = response.data[0]
-        address_high = response.data[1]
-        address_middle = response.data[2]
-        address_low = response.data[3]
-        address_echo = (address_high << 16) | (address_middle << 8) | address_low
-        size_echo = response.data[4]
+
         
         # Remaining bytes are memory data
-        memory_data = response.data[5:]
+        memory_data = response.data
         
         return cls.ServiceData(
             memory_data=memory_data,
-            memory_type_echo=memory_type_echo,
-            address_echo=address_echo,
-            size_echo=size_echo
         )
 
 
