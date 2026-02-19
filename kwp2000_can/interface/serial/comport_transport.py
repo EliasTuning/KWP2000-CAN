@@ -121,7 +121,7 @@ class ComportTransport(Transport):
             self._serial.flush()  # Ensure data is sent immediately
             # self._serial.reset_input_buffer()
             self._serial.read(len(data))
-            self.logger.debug(f"Sent {bytes_written} bytes: {data.hex()}")
+            self.logger.info(f"Sent {bytes_written} bytes: {data.hex()}")
 
             if bytes_written != len(data):
                 raise TransportException(
@@ -163,7 +163,7 @@ class ComportTransport(Transport):
             if not data:
                 return None
 
-            self.logger.debug(f"Received {len(data)} bytes: {data.hex()}")
+            self.logger.info(f"Received {len(data)} bytes: {data.hex()}")
             return bytes(data)
 
         except serial.SerialException as e:

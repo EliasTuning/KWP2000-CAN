@@ -50,16 +50,16 @@ if __name__ == "__main__":
             print(f"Connected to {COM_PORT} at {BAUD_RATE} baud")
             
             # Example: Start extended diagnostic session
-            response = client.startDiagnosticSession(session_type=0x81)
+            response = client.start_diagnostic_session(session_type=0x81)
             print(f"Session started: {response}")
             
             # Example: Read memory by address
             # Read 16 bytes starting at memory address 0x005b9464
             print(f"Reading memory at address 0x{mem_addr:08X}, size: 16 bytes")
-            result = client.readMemoryByAddress2(
+            result = client.read_memory_by_address(
                 memory_address=mem_addr,
                 memory_size=4,
-                memory_type=0
+                #memory_type=0
             )
             #print(f"Memory address echo: 0x{result.memory_address_echo:08X}")
             print(f"Record values ({len(result.record_values)} bytes): {result.record_values.hex()}")

@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
             # Start diagnostic session with maximum baudrate (125k = 0x06)
             print("\nStarting diagnostic session with maximum baudrate (125k)...")
-            response = client.startDiagnosticSession(
+            response = client.start_diagnostic_session(
                 diagnostic_mode=0x81,  # OBD2 mode
                 baudrate_identifier=BAUDRATE_115200
             )
