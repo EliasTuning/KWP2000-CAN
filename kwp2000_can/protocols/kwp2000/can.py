@@ -57,13 +57,7 @@ class KWP2000_TP20_J2534:
         # Create TP20 transport layer
         self._tp20 = TP20Transport(
             can_connection=self._can_connection,
-            dest=dest,
-            rx_id=rx_id,
-            tx_id=tx_id,
-            block_size=block_size,
-            t1=t1,
-            t3=t3,
-            timeout=timeout
+            dest=0x01
         )
         
         # Create KWP2000 client

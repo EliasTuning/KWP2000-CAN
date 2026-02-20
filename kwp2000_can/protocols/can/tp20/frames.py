@@ -48,13 +48,14 @@ def build_setup_request(
     rx_v = 0x1 if rx_valid else 0x0
     tx_v = 0x1 if tx_valid else 0x0
     
+    # TP2.0_1_1: byte order is Dest, Opcode, TX-ID-Low, Info-TX, RX-ID-Low, Info-RX, App; 11-bit ID high = 3 bits (2-0)
     return bytes([
         dest,
         OPCODE_SETUP_REQUEST,
-        rx_low,
-        (rx_v << 4) | (rx_prefix & 0x0F),
         tx_low,
-        (tx_v << 4) | (tx_prefix & 0x0F),
+        (tx_v << 4) | (tx_prefix & 0x07),
+        rx_low,
+        (rx_v << 4) | (rx_prefix & 0x07),
         app_type
     ])
 
@@ -76,18 +77,19 @@ def parse_setup_response(data: bytes) -> Tuple[int, int, int, bool, bool, int]:
     opcode = data[1]
     
     if opcode == OPCODE_SETUP_POSITIVE_RESPONSE:
-        rx_low = data[2]
-        rx_byte = data[3]
-        rx_valid = (rx_byte >> 4) & 0x01 == 0x0
-        rx_prefix = rx_byte & 0x0F
-        rx_id = (rx_prefix << 8) | rx_low
-        
-        tx_low = data[4]
-        tx_byte = data[5]
+        # TP2.0_1_1: bytes 2-3 = TX-ID, bytes 4-5 = RX-ID
+        tx_low = data[2]
+        tx_byte = data[3]
         tx_valid = (tx_byte >> 4) & 0x01 == 0x0
-        tx_prefix = tx_byte & 0x0F
+        tx_prefix = tx_byte & 0x07  # 11-bit ID: bits 10-8 only
         tx_id = (tx_prefix << 8) | tx_low
-        
+
+        rx_low = data[4]
+        rx_byte = data[5]
+        rx_valid = (rx_byte >> 4) & 0x01 == 0x0
+        rx_prefix = rx_byte & 0x07  # 11-bit ID: bits 10-8 only
+        rx_id = (rx_prefix << 8) | rx_low
+
         app_type = data[6]
         
         return dest, rx_id, tx_id, rx_valid, tx_valid, app_type
@@ -144,6 +146,36 @@ def parse_parameters_response(data: bytes) -> Tuple[int, int, int, int, int]:
         raise ValueError(f"Invalid parameters response opcode: {data[0]:02X}")
     
     return data[1], data[2], data[3], data[4], data[5]
+
+
+def build_parameters_response(
+    block_size: int = 0x0F,
+    t1: int = 0x8A,
+    t2: int = 0xFF,
+    t3: int = 0x32,
+    t4: int = 0xFF
+) -> bytes:
+    """
+    Build a channel parameters response (CA) frame.
+
+    Args:
+        block_size: Block size (number of packets before ACK)
+        t1: Timing parameter 1
+        t2: Timing parameter 2 (usually 0xFF)
+        t3: Timing parameter 3 (interval between packets)
+        t4: Timing parameter 4 (usually 0xFF)
+
+    Returns:
+        6-byte parameters response frame
+    """
+    return bytes([
+        OPCODE_PARAMETERS_RESPONSE,
+        block_size,
+        t1,
+        t2,
+        t3,
+        t4
+    ])
 
 
 def build_data_frame(opcode: int, sequence: int, payload: bytes) -> bytes:

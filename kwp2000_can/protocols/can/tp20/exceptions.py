@@ -33,3 +33,8 @@ class TP20DisconnectedException(TP20Exception):
     """Raised when trying to use a disconnected channel."""
     pass
 
+
+class TP20AckRetryException(TP20Exception):
+    """Raised when ACK times out but sender should retry (RC_S <= MNT)."""
+    pass
+

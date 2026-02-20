@@ -21,6 +21,6 @@ if __name__ == "__main__":
 
         while(True):
             # Read data by local identifier
-            data = client.readDataByLocalIdentifier(local_identifier=0x01)
+            data = client.read_data_by_local_identifier(local_identifier=0x01)
             print(f"Data read: {data}")
             time.sleep(2)

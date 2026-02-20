@@ -1,16 +1,11 @@
 """TP20 transport layer for sending and receiving byte data over CAN."""
 
-import logging
 import queue
 import threading
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Optional
-
-# Module-level logger for TP20 transport debugging
-logger = logging.getLogger("TP20")
-logger.setLevel(logging.ERROR)
 
 from .constants import (
     CAN_ID_SETUP_REQUEST,
@@ -27,9 +22,24 @@ from .constants import (
     OPCODE_CHANNEL_TEST,
     OPCODE_BREAK,
     OPCODE_DISCONNECT,
-    OPCODE_PARAMETERS_RESPONSE,
+    MNTB,
+    MNT,
+    MNTC,
+    MNCT,
+    T_WAIT_MS,
+    T_E_MS,
+    TN_MS,
+    T_CT_PASSIV_MS,
+    BS_MIN,
+    BS_MAX,
+    PRIO_CA_CT,
+    PRIO_BR,
+    PRIO_ACK,
+    PRIO_DT_CS_DC,
+    OPCODE_PARAMETERS_REQUEST,
 )
 from .exceptions import (
+    TP20AckRetryException,
     TP20ChannelException,
     TP20DisconnectedException,
     TP20Exception,
@@ -39,15 +49,29 @@ from .frames import (
     build_setup_request,
     parse_setup_response,
     build_parameters_request,
+    build_parameters_response,
     parse_parameters_response,
     build_data_frame,
     parse_data_frame,
     build_disconnect,
     build_channel_test,
 )
+from .timing import TimingParameter
 
-from kwp2000_can.interface.base_can_connection import CanConnection
-from kwp2000_can.protocols.kwp2000 import Transport
+from .base_can_connection import CanConnection
+
+
+def _check_t1_gt_4_t3(t1_byte: int, t3_byte: int) -> None:
+    """Raise ValueError if T1 <= 4*T3 (TP2.0_1_1 §5.2 requires T1 > 4*T3)."""
+    t1_ms = TimingParameter.decode(t1_byte)
+    t3_ms = TimingParameter.decode(t3_byte)
+    if t1_ms <= 4 * t3_ms:
+        raise ValueError(
+            f"T1 ({t1_ms} ms) must be > 4×T3 ({t3_ms} ms) per TP2.0_1_1 §5.2"
+        )
+
+
+from .transport_base import Transport
 
 
 class _CommandType(Enum):
@@ -55,6 +79,7 @@ class _CommandType(Enum):
     CLOSE = auto()
     SEND = auto()
     RECV = auto()
+    RENEGOTIATE = auto()
     STOP = auto()
 
 
@@ -97,13 +122,11 @@ class TP20Transport(Transport):
         t1: int = 0x8A,
         t3: int = 0x32,
         timeout: float = 1.0,
-        keepalive_interval_ms: float = 10.0,
-        channel_setup_retries: int = 0,
-        channel_setup_retry_delay: float = 0.5,
+        keepalive_interval_ms: float = 1000.0,
     ):
         """
         Initialize TP20 transport.
-        
+
         Args:
             can_connection: CAN connection to use
             dest: Logical address of destination module (default: 0x01 for ECU)
@@ -113,22 +136,23 @@ class TP20Transport(Transport):
             t1: Timing parameter 1 (default: 0x8A)
             t3: Timing parameter 3 (default: 0x32)
             timeout: Default timeout in seconds
-            keepalive_interval_ms: Interval for channel test (A3) frames (default: 10 ms)
-            channel_setup_retries: Number of retries for channel setup (default: 0)
-            channel_setup_retry_delay: Delay between channel setup retries in seconds (default: 0.5)
+            keepalive_interval_ms: Interval for channel test (A3) frames (default: 1000 ms)
         """
         self.can_connection = can_connection
         self.dest = dest
         self.preferred_rx_id = rx_id
         self.preferred_tx_id = tx_id
+        if not BS_MIN <= block_size <= BS_MAX:
+            raise ValueError(
+                f"block_size must be {BS_MIN}..{BS_MAX} (TP2.0_1_1 §5.2), got {block_size}"
+            )
         self.block_size = block_size
         self.t1 = t1
         self.t3 = t3
+        _check_t1_gt_4_t3(t1, t3)  # TP2.0_1_1 §5.2
         self.timeout = timeout
         self.keepalive_interval_ms = keepalive_interval_ms
-        self.channel_setup_retries = channel_setup_retries
-        self.channel_setup_retry_delay = channel_setup_retry_delay
-        
+
         # Channel state
         self._is_open = False
         self._channel_setup = False
@@ -144,12 +168,23 @@ class TP20Transport(Transport):
         self._receive_buffer = bytearray()
         self._receive_sequence = None
         self._receive_length = None
+        self._sn_error_count = 0  # Blocknachforderung counter; reset on correct SN, close if > MNTB
         
         # Send sequence number (continues across messages)
         self._send_sequence = 0
-        
-        # Timestamp of when the last send operation completed (for T3 enforcement)
-        self._last_send_complete_time: float = 0.0
+        # T1 timeout retry counter (TP2.0_1_1 §6.3.1); reset on successful ACK, close if > MNT
+        self._rc_s = 0
+        # Break requested by receiver (TP2.0_1_1 §6.3.4); sender must end with EOM
+        self._break_requested = False
+        # Connection setup retry counter (TP2.0_1_1 §6.1.1); abort when RC_E > MNTC (11 total attempts per §5.1 n+1 rule)
+        self._rc_e = 0
+        # BEC per §6.3.2: reset on RR, increment on RNR; close if > MNTB
+        self._bec = 0
+        # Passive Connection Test (§6.4): expect CT from peer within T_CTpassiv; close if RC_CT > MNCT
+        self._last_ct_received: float = 0.0
+        self._rc_ct: int = 0
+        # CS/CA re-exchange (§6.3): block sends while renegotiating
+        self._renegotiating: bool = False
 
         # Threading primitives
         self._cmd_queue: queue.Queue[_Command] = queue.Queue()
@@ -159,6 +194,11 @@ class TP20Transport(Transport):
         self._keepalive_stop_event = threading.Event()
         self._keepalive_thread: Optional[threading.Thread] = None
         self._worker_thread: Optional[threading.Thread] = None
+        # Outgoing TPDU queue (priority, tie_breaker, can_id, data, event) per §4.2.2 and §6.2
+        self._send_queue: queue.PriorityQueue = queue.PriorityQueue()
+        self._send_seq = 0
+        self._sender_stop_event = threading.Event()
+        self._sender_thread: Optional[threading.Thread] = None
         
     def open(self) -> None:
         """Open the transport and establish TP20 channel via worker thread."""
@@ -268,8 +308,67 @@ class TP20Transport(Transport):
             self._keepalive_thread.join(timeout=1.0)
         self._keepalive_thread = None
 
+    def _start_sender(self) -> None:
+        """Start the sender thread (drains _send_queue in priority order, T3 between sends)."""
+        if self._sender_thread and self._sender_thread.is_alive():
+            return
+        self._sender_stop_event.clear()
+        self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
+        self._sender_thread.start()
+
+    def _stop_sender(self) -> None:
+        """Stop the sender thread and drain the send queue."""
+        self._sender_stop_event.set()
+        if self._sender_thread and self._sender_thread.is_alive():
+            self._sender_thread.join(timeout=1.0)
+        self._sender_thread = None
+        self._clear_send_queue()
+
+    def _clear_send_queue(self) -> None:
+        """Drain the send queue and signal any waiting events so callers don't block forever."""
+        try:
+            while True:
+                item = self._send_queue.get_nowait()
+                if len(item) >= 5 and item[4] is not None:
+                    item[4].set()
+        except queue.Empty:
+            pass
+
+    def _sender_loop(self) -> None:
+        """Send TPDUs from queue in priority order; sleep T3 after each send (§4.2.2, §6.2)."""
+        while not self._sender_stop_event.is_set():
+            try:
+                item = self._send_queue.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            priority, _tb, can_id, data, evt = item
+            try:
+                if self.can_connection:
+                    self.can_connection.send_can_frame(can_id, data)
+            except Exception:
+                pass
+            if evt is not None:
+                evt.set()
+            if self._t3 is not None:
+                try:
+                    t3_ms = TimingParameter.decode(self._t3)
+                except (ValueError, TypeError):
+                    t3_ms = 5.0
+                self._sender_stop_event.wait(timeout=t3_ms / 1000.0)
+            else:
+                self._sender_stop_event.wait(timeout=0.005)
+
+    def _send_tpdu(self, priority: int, can_id: int, data: bytes, wait_sent: bool = True) -> None:
+        """Enqueue a TPDU for sending in priority order; optionally wait until sent (§4.2.2)."""
+        evt = threading.Event() if wait_sent else None
+        self._send_seq += 1
+        self._send_queue.put((priority, self._send_seq, can_id, data, evt))
+        if evt is not None:
+            if not evt.wait(timeout=2.0):
+                raise TP20Exception("Send timeout waiting for TPDU to be sent")
+
     def _keepalive_loop(self) -> None:
-        """Periodically send channel test (A3) frames while the channel is active."""
+        """Periodically send channel test (A3) frames. This transport is the active CT side (CS sender) per TP2.0_1_1 §6.4 and only sends CT."""
         interval = self.keepalive_interval_ms / 1000.0
         while not self._keepalive_stop_event.wait(interval):
             if not self._is_open or not self._channel_setup:
@@ -277,9 +376,7 @@ class TP20Transport(Transport):
             if self._tx_can_id is None:
                 continue
             try:
-                self.can_connection.send_can_frame(
-                    self._tx_can_id, build_channel_test()
-                )
+                self._send_tpdu(PRIO_CA_CT, self._tx_can_id, build_channel_test(), wait_sent=False)
             except Exception:
                 # Ignore keep-alive send errors to avoid stopping the loop
                 continue
@@ -300,6 +397,14 @@ class TP20Transport(Transport):
     def _worker_loop(self) -> None:
         """Background loop that polls CAN RX and processes commands."""
         while not self._stop_event.is_set():
+            # Passive Connection Test (§6.4): close if no CT received within T_CTpassiv, RC_CT > MNCT
+            if self._is_open and self._channel_setup and self._last_ct_received > 0:
+                if time.time() - self._last_ct_received > T_CT_PASSIV_MS / 1000.0:
+                    self._rc_ct += 1
+                    self._last_ct_received = time.time()
+                    if self._rc_ct > MNCT:
+                        self._disconnect_channel()
+
             # Opportunistically poll CAN RX to keep the RX queue warm
             if self._is_open:
                 try:
@@ -307,6 +412,27 @@ class TP20Transport(Transport):
                 except Exception:
                     frame = None
                 if frame is not None:
+                    can_id, data = frame
+                    # TP2.0_1_1 §6.4: on receipt of CT (0xA3) we must respond with CT.
+                    # Accept CT on both channel IDs: some ECUs send CT on _tx_can_id (e.g. 0x740).
+                    if (
+                        self._channel_setup
+                        and (can_id == self._rx_can_id or can_id == self._tx_can_id)
+                        and len(data) == 1
+                        and data[0] == OPCODE_CHANNEL_TEST
+                    ):
+                        self._last_ct_received = time.time()
+                        self._rc_ct = 0
+                        try:
+                            self._send_tpdu(
+                                PRIO_CA_CT,
+                                self._tx_can_id,
+                                build_channel_test(),
+                                wait_sent=False,
+                            )
+                        except Exception:
+                            pass
+                        continue
                     self._rx_queue.put(frame)
 
             try:
@@ -335,6 +461,9 @@ class TP20Transport(Transport):
             if cmd.cmd_type == _CommandType.RECV:
                 data = self._do_recv(timeout=cmd.timeout or self.timeout)
                 return _Response(True, data=data)
+            if cmd.cmd_type == _CommandType.RENEGOTIATE:
+                self._do_renegotiate()
+                return _Response(True)
             if cmd.cmd_type == _CommandType.STOP:
                 self._do_stop()
                 return _Response(True)
@@ -349,10 +478,8 @@ class TP20Transport(Transport):
         self.can_connection.open()
         self._is_open = True
         try:
-            self._setup_channel(
-                retries=self.channel_setup_retries,
-                retry_delay=self.channel_setup_retry_delay
-            )
+            self._setup_channel()
+            self._start_sender()
             self._negotiate_parameters()
             self._start_keepalive()
         except Exception as exc:
@@ -384,16 +511,15 @@ class TP20Transport(Transport):
             raise TP20Exception("Transport not open")
         if not self._channel_setup:
             raise TP20DisconnectedException("Channel not set up")
+        if self._renegotiating:
+            raise TP20Exception("Send blocked during parameter renegotiation")
 
-        logger.debug(f"TP20 SEND: {len(data)} bytes: {data.hex()}")
-        
         length = len(data)
         payload = bytearray()
         payload.append((length >> 8) & 0xFF)
         payload.append(length & 0xFF)
         payload.extend(data)
         self._send_segmented(payload)
-        logger.debug(f"TP20 SEND complete")
 
     def _do_recv(self, timeout: float) -> Optional[bytes]:
         if not self._is_open:
@@ -401,7 +527,6 @@ class TP20Transport(Transport):
         if not self._channel_setup:
             raise TP20DisconnectedException("Channel not set up")
 
-        logger.debug(f"TP20 RECV: waiting with timeout={timeout}s")
         start_time = time.time()
         self._receive_buffer.clear()
         self._receive_length = None
@@ -410,7 +535,6 @@ class TP20Transport(Transport):
         while True:
             elapsed = time.time() - start_time
             if elapsed >= timeout:
-                logger.debug(f"TP20 RECV: timeout after {elapsed:.3f}s")
                 raise TP20TimeoutException("Timeout waiting for frame")
 
             remaining_timeout = timeout - elapsed
@@ -419,32 +543,45 @@ class TP20Transport(Transport):
                 continue
 
             can_id, data = frame
+            # CT (0xA3) accepted on both channel IDs; data frames only on _rx_can_id
+            if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST and (can_id == self._rx_can_id or can_id == self._tx_can_id):
+                self._last_ct_received = time.time()
+                self._rc_ct = 0
+                self._send_tpdu(
+                    PRIO_CA_CT, self._tx_can_id, build_channel_test(), wait_sent=False
+                )
+                continue
             if can_id != self._rx_can_id:
-                #logger.debug(f"TP20 RECV: ignoring frame on CAN ID 0x{can_id:03X} (expected 0x{self._rx_can_id:03X})")
                 continue
 
-            logger.debug(f"TP20 RECV: {self._format_frame(can_id, data)}")
-
-            if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
-                # Internal keep-alive, do not surface
-                continue
             if len(data) == 1 and data[0] == 0xA8:
-                logger.debug("TP20 RECV: received disconnect (A8)")
                 raise TP20DisconnectedException("Received A8")
-            
-            # Check for parameters update from ECU (0xA1 opcode)
-            if self._handle_parameters_update(data):
-                # Parameters were updated, continue waiting for data
+            if len(data) == 1 and data[0] == OPCODE_BREAK:
+                # TP2.0_1_1 §6.3.4: sender will end with EOM; discard data
+                self._receive_buffer.clear()
+                self._receive_length = None
+                self._receive_sequence = None
+                continue
+
+            # Remote-initiated CS/CA re-exchange (§6.3): reply with CA and reset state
+            if len(data) >= 6 and data[0] == OPCODE_PARAMETERS_REQUEST:
+                ca_frame = build_parameters_response(
+                    block_size=self.block_size,
+                    t1=self.t1,
+                    t2=0xFF,
+                    t3=self.t3,
+                    t4=0xFF,
+                )
+                self._send_tpdu(PRIO_CA_CT, self._tx_can_id, ca_frame)
+                self._reset_protocol_state_after_cs_ca()
                 continue
 
             try:
                 opcode, sequence, payload = parse_data_frame(data)
             except ValueError:
-                logger.debug(f"TP20 RECV: failed to parse data frame: {data.hex()}")
                 continue
 
             if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY):
-                logger.debug(f"TP20 RECV: ignoring ACK frame during receive")
                 continue
 
             if opcode in (
@@ -456,10 +593,18 @@ class TP20Transport(Transport):
                 if self._receive_sequence is not None:
                     expected_seq = (self._receive_sequence + 1) & SEQ_MASK
                     if sequence != expected_seq:
-                        logger.debug(f"TP20 RECV: sequence mismatch (got {sequence}, expected {expected_seq}), resetting buffer")
-                        self._receive_buffer.clear()
-                        self._receive_length = None
-                        self._receive_sequence = None
+                        # TP2.0_1_1 §6.3.3/6.5: discard frame, send Ack RR with expected SN (request retransmit)
+                        ack_frame = build_data_frame(
+                            DATA_OP_ACK_READY, expected_seq, b""
+                        )
+                        self._send_tpdu(PRIO_ACK, self._tx_can_id, ack_frame)
+                        self._sn_error_count += 1
+                        if self._sn_error_count > MNTB:
+                            self._disconnect_channel()
+                            raise TP20ChannelException(
+                                "SN error count exceeded MNTB (Blocknachforderung)"
+                            )
+                        continue
 
                 if self._receive_length is None:
                     if len(payload) < 2:
@@ -467,19 +612,18 @@ class TP20Transport(Transport):
                     self._receive_length = (payload[0] << 8) | payload[1]
                     self._receive_buffer.extend(payload[2:])
                     self._receive_sequence = sequence
-                    logger.debug(f"TP20 RECV: started message, total length={self._receive_length}, have {len(self._receive_buffer)} bytes")
+                    self._sn_error_count = 0
                 else:
                     self._receive_buffer.extend(payload)
                     self._receive_sequence = sequence
-                    logger.debug(f"TP20 RECV: continued message, have {len(self._receive_buffer)}/{self._receive_length} bytes")
+                    self._sn_error_count = 0
 
                 if opcode in (DATA_OP_WAIT_ACK_MORE, DATA_OP_WAIT_ACK_LAST):
                     ack_sequence = (sequence + 1) & SEQ_MASK
                     ack_frame = build_data_frame(
                         DATA_OP_ACK_READY, ack_sequence, b""
                     )
-                    logger.debug(f"TP20 RECV: sending ACK seq={ack_sequence}")
-                    self.can_connection.send_can_frame(self._tx_can_id, ack_frame)
+                    self._send_tpdu(PRIO_ACK, self._tx_can_id, ack_frame)
 
                 if (
                     self._receive_length is not None
@@ -491,7 +635,6 @@ class TP20Transport(Transport):
                     self._receive_buffer.clear()
                     self._receive_length = None
                     self._receive_sequence = None
-                    logger.debug(f"TP20 RECV complete: {len(received_data)} bytes: {received_data.hex()}")
                     return received_data
 
     def _do_stop(self) -> None:
@@ -543,6 +686,19 @@ class TP20Transport(Transport):
         except Exception:
             return f"{prefix}: raw={data.hex()}"
 
+    def _reset_protocol_state_after_cs_ca(self) -> None:
+        """Reset protocol variables after CS/CA exchange per TP2.0_1_1 §5.2 (SN, counters, timers)."""
+        self._send_sequence = 0
+        self._rc_s = 0
+        self._bec = 0
+        self._sn_error_count = 0
+        self._receive_buffer.clear()
+        self._receive_length = None
+        self._receive_sequence = None
+        self._break_requested = False
+        self._last_ct_received = time.time()
+        self._rc_ct = 0
+
     def _reset_state(self) -> None:
         """Reset channel and buffer state."""
         self._channel_setup = False
@@ -557,77 +713,19 @@ class TP20Transport(Transport):
         self._receive_buffer.clear()
         self._receive_length = None
         self._receive_sequence = None
+        self._sn_error_count = 0
         self._send_sequence = 0
-        self._last_send_complete_time = 0.0
+        self._rc_s = 0
+        self._bec = 0
+        self._break_requested = False
+        self._rc_e = 0
+        self._last_ct_received = 0.0
+        self._rc_ct = 0
+        self._renegotiating = False
         self._clear_queue(self._rx_queue)
         self._keepalive_stop_event.set()
         self._keepalive_thread = None
-
-    def force_reset(self) -> None:
-        """
-        Force-reset the transport without sending disconnect frame.
-        
-        This is useful when the ECU has already rebooted (e.g., into bootloader)
-        and won't respond to a normal TP20 disconnect handshake. It properly
-        stops all threads and resets all state so the transport can be reopened.
-        """
-        logger.debug("TP20Transport: Force reset initiated")
-        
-        # Step 1: Stop keepalive thread first
-        self._stop_keepalive()
-        
-        # Step 2: Signal worker to stop BEFORE closing CAN connection
-        # First mark as not open so worker stops polling CAN
-        self._is_open = False
-        self._channel_setup = False
-        
-        # Set stop event and send STOP command
-        self._stop_event.set()
-        if self._worker_thread and self._worker_thread.is_alive():
-            try:
-                self._cmd_queue.put_nowait(_Command(_CommandType.STOP))
-            except queue.Full:
-                pass
-            # Give worker a short time to notice the stop signal
-            self._worker_thread.join(timeout=0.2)
-        
-        # Step 3: Close the CAN connection - this will interrupt any blocking I/O
-        # Do this while worker might still be running, but _is_open=False prevents
-        # the worker from calling recv_can_frame
-        try:
-            self.can_connection.close()
-        except Exception as e:
-            logger.debug(f"TP20Transport: CAN connection close exception (expected): {e}")
-        
-        # Step 4: Wait for worker thread to fully exit (should be quick now)
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=2.0)
-            if self._worker_thread.is_alive():
-                logger.warning("TP20Transport: Worker thread did not stop in time")
-        
-        self._worker_thread = None
-        self._stop_event.clear()
-        
-        # Step 5: Clear all queues
-        self._clear_queue(self._cmd_queue)
-        self._clear_queue(self._response_queue)
-        self._clear_queue(self._rx_queue)
-        
-        # Step 6: Reset all internal state
-        self._rx_can_id = None
-        self._tx_can_id = None
-        self._remote_rx_id = None
-        self._remote_tx_id = None
-        self._block_size = None
-        self._t1 = None
-        self._t3 = None
-        self._receive_buffer.clear()
-        self._receive_length = None
-        self._receive_sequence = None
-        self._send_sequence = 0
-        self._last_send_complete_time = 0.0
-        
-        logger.debug("TP20Transport: Force reset complete")
+        self._stop_sender()
 
     @staticmethod
     def _clear_queue(target_queue: queue.Queue) -> None:
@@ -638,182 +736,170 @@ class TP20Transport(Transport):
         except queue.Empty:
             return
     
-    def _setup_channel(self, retries: int = 0, retry_delay: float = 0.5) -> None:
-        """
-        Setup TP20 channel.
-        
-        Args:
-            retries: Number of retry attempts if channel setup fails (default: 0)
-            retry_delay: Delay in seconds between retry attempts (default: 0.5)
-        """
-        last_exception: Optional[Exception] = None
-        
-        for attempt in range(retries + 1):
-            if attempt > 0:
-                logger.debug(f"TP20 channel setup retry {attempt}/{retries} after {retry_delay}s delay")
-                time.sleep(retry_delay)
-            
-            try:
-                self._setup_channel_attempt()
-                return  # Success
-            except TP20TimeoutException as e:
-                last_exception = e
-                logger.debug(f"TP20 channel setup attempt {attempt + 1} timed out")
-                continue
-            except TP20ChannelException:
-                # Negative response from ECU - don't retry
-                raise
-        
-        # All retries exhausted
-        raise TP20TimeoutException("Timeout waiting for channel setup response") from last_exception
-
-    def _setup_channel_attempt(self) -> None:
-        """Single attempt to setup TP20 channel."""
-        # Build setup request
-        # According to working example: request tx_id=0x0300 (where ECU should transmit)
-        # rx_id is set to invalid (0x0000) so ECU will choose
+    def _setup_channel(self) -> None:
+        """Setup TP20 channel (TP2.0_1_1 §6.1.1: T_E + TN per attempt, RC_E, MNTC)."""
+        self._rc_e = 0
         setup_req = build_setup_request(
             dest=self.dest,
-            rx_id=0x0000,  # Invalid, ECU will choose
-            tx_id=self.preferred_rx_id,  # Request ECU to transmit on this (0x300)
-            rx_valid=True,   # rx_id is invalid
-            tx_valid=False,  # tx_id is valid
+            rx_id=self.preferred_rx_id,
+            tx_id=0,
+            rx_valid=False,
+            tx_valid=True,
         )
-        
-        # Send setup request
-        self.can_connection.send_can_frame(CAN_ID_SETUP_REQUEST, setup_req)
-        
-        # Wait for response
+        request_can_id = CAN_ID_SETUP_REQUEST
         response_can_id = CAN_ID_SETUP_RESPONSE_BASE + self.dest
-        start_time = time.time()
-        
-        while time.time() - start_time < self.timeout:
-            frame = self._next_frame(timeout=0.1)
-            if frame is None:
-                continue
-            
-            can_id, data = frame
-            if can_id != response_can_id:
-                continue
-            
-            try:
-                dest, rx_id, tx_id, rx_valid, tx_valid, app_type = parse_setup_response(data)
-                logger.debug(f"Setup response parsed: dest={dest:02X}, rx_id=0x{rx_id:03X}, tx_id=0x{tx_id:03X}, rx_valid={rx_valid}, tx_valid={tx_valid}, app_type={app_type:02X}")
-                logger.debug(f"Setup response raw data: {data.hex()}")
-                # From ECU's perspective: rx_id is where ECU listens, tx_id is where ECU transmits
-                # So: we send TO ECU on rx_id, we listen FROM ECU on tx_id
-                # But according to the working example, it's reversed:
-                # We send on tx_id (0x740), we listen on rx_id (0x300)
-                self._remote_rx_id = rx_id  # ECU listens here (we send TO ECU here, but example shows we send on tx_id)
-                self._remote_tx_id = tx_id  # ECU transmits here (we listen FROM ECU here, but example shows we listen on rx_id)
-                # Based on working example: we send on tx_id, listen on rx_id
-                self._tx_can_id = tx_id     # We send on ECU's TX ID (0x740)
-                self._rx_can_id = rx_id     # We listen on ECU's RX ID (0x300)
-                self._channel_setup = True
-                logger.info(f"TP20 channel setup: RX CAN ID=0x{self._rx_can_id:03X}, TX CAN ID=0x{self._tx_can_id:03X}")
-                return
-            except ValueError as e:
-                if "Negative" in str(e):
-                    raise TP20ChannelException(f"Channel setup failed: {e}") from e
-                continue
-        
-        raise TP20TimeoutException("Timeout waiting for channel setup response")
+        attempt_timeout_s = (T_E_MS + TN_MS) / 1000.0
+        import logging
+        logger = logging.getLogger()
+        while True:
+            self.can_connection.send_can_frame(request_can_id, setup_req)
+            start_time = time.time()
+            while time.time() - start_time < attempt_timeout_s:
+                frame = self._next_frame(timeout=0.05)
+                if frame is None:
+                    continue
+                can_id, data = frame
+                if can_id != response_can_id:
+                    continue
+                try:
+                    dest, rx_id, tx_id, rx_valid, tx_valid, app_type = parse_setup_response(data)
+                    logger.debug(f"Setup response parsed: dest={dest:02X}, rx_id=0x{rx_id:03X}, tx_id=0x{tx_id:03X}, rx_valid={rx_valid}, tx_valid={tx_valid}, app_type={app_type:02X}")
+                    self._remote_rx_id = rx_id
+                    self._remote_tx_id = tx_id
+                    self._tx_can_id = rx_id
+                    self._rx_can_id = tx_id
+                    self._channel_setup = True
+                    self._rc_e = 0
+                    logger.info(f"TP20 channel setup: RX CAN ID=0x{self._rx_can_id:03X}, TX CAN ID=0x{self._tx_can_id:03X}")
+                    return
+                except ValueError as e:
+                    if "Negative" in str(e):
+                        raise TP20ChannelException(f"Channel setup failed: {e}") from e
+                    continue
+            self._rc_e += 1
+            if self._rc_e > MNTC:
+                raise TP20TimeoutException(
+                    f"Channel setup timeout after {MNTC + 1} attempts (RC_E > MNTC)"
+                )
     
     def _negotiate_parameters(self) -> None:
-        """Negotiate channel parameters."""
+        """Negotiate channel parameters (TP2.0_1_1 §6.1.1: T_E + TN per attempt, RC_E, MNTC)."""
         if not self._channel_setup:
             raise TP20ChannelException("Channel not set up")
-        
-        # Build parameters request
+        self._rc_e = 0
         params_req = build_parameters_request(
             block_size=self.block_size,
             t1=self.t1,
             t3=self.t3
         )
-        
-        logger.debug(f"TP20 PARAMS: sending request (block_size={self.block_size}, t1=0x{self.t1:02X}, t3=0x{self.t3:02X})")
-        
-        # Send parameters request
-        self.can_connection.send_can_frame(self._tx_can_id, params_req)
-        
-        # Wait for response
-        start_time = time.time()
-        
-        while time.time() - start_time < self.timeout:
-            frame = self._next_frame(timeout=0.1)
-            if frame is None:
-                continue
-            
-            can_id, data = frame
-            if can_id != self._rx_can_id:
-                continue
-            
-            try:
-                block_size, t1, t2, t3, t4 = parse_parameters_response(data)
-                self._block_size = block_size
+        attempt_timeout_s = (T_E_MS + TN_MS) / 1000.0
+        while True:
+            self._send_tpdu(PRIO_DT_CS_DC, self._tx_can_id, params_req)
+            start_time = time.time()
+            while time.time() - start_time < attempt_timeout_s:
+                frame = self._next_frame(timeout=0.05)
+                if frame is None:
+                    continue
+                can_id, data = frame
+                if can_id != self._rx_can_id:
+                    continue
+                try:
+                    block_size, t1, t2, t3, t4 = parse_parameters_response(data)
+                except ValueError:
+                    continue
+                if not BS_MIN <= block_size <= BS_MAX:
+                    self._disconnect_channel()
+                    raise TP20ChannelException(
+                        f"Remote block_size out of range {BS_MIN}..{BS_MAX} (TP2.0_1_1 §5.2)"
+                    )
+                try:
+                    _check_t1_gt_4_t3(t1, t3)  # TP2.0_1_1 §5.2
+                except ValueError as e:
+                    self._disconnect_channel()
+                    raise TP20ChannelException(
+                        "Remote parameters violate T1 > 4×T3 (TP2.0_1_1 §5.2)"
+                    ) from e
+                self._block_size = min(self.block_size, block_size)
                 self._t1 = t1
                 self._t3 = t3
-                logger.debug(f"TP20 PARAMS: negotiated block_size={block_size}, T1={t1}ms, T2={t2}ms, T3={t3}ms, T4={t4}ms")
+                self._rc_e = 0
+                self._last_ct_received = time.time()
+                self._rc_ct = 0
                 return
-            except ValueError:
-                continue
-        
-        raise TP20TimeoutException("Timeout waiting for parameters response")
-    
-    def _handle_parameters_update(self, data: bytes) -> bool:
+            # Timeout: no valid CA in this attempt (TP2.0_1_1 §6.1.1)
+            self._rc_e += 1
+            if self._rc_e > MNTC:
+                self._disconnect_channel()
+                raise TP20TimeoutException(
+                    f"Parameters negotiation timeout after {MNTC + 1} attempts (RC_E > MNTC)"
+                )
+
+    def renegotiate_parameters(self) -> None:
         """
-        Check if data is a parameters response and update timing if so.
-        
-        Args:
-            data: Raw frame data
-            
-        Returns:
-            True if this was a parameters response and was handled, False otherwise
+        Re-exchange CS/CA on an open channel per TP2.0_1_1 §6.3.
+        Blocks until exchange is complete; resets SN, counters, and timers.
+        Raises if transport is not open or channel not set up.
         """
-        if len(data) != 6:
-            return False
-        if data[0] != OPCODE_PARAMETERS_RESPONSE:
-            return False
-        
+        if not self._worker_thread:
+            raise TP20Exception("Transport worker not running")
+        self._submit_command(_CommandType.RENEGOTIATE)
+
+    def _do_renegotiate(self) -> None:
+        """Application-initiated CS/CA re-exchange; block sends during exchange (§6.3)."""
+        if not self._channel_setup:
+            raise TP20ChannelException("Channel not set up")
+        self._renegotiating = True
         try:
-            block_size, t1, t2, t3, t4 = parse_parameters_response(data)
-            old_block_size, old_t1, old_t3 = self._block_size, self._t1, self._t3
-            self._block_size = block_size
-            self._t1 = t1
-            self._t3 = t3
-            logger.info(f"TP20 PARAMS UPDATE: block_size={old_block_size}->{block_size}, "
-                       f"T1={old_t1}->{t1}ms, T3={old_t3}->{t3}ms")
-            return True
-        except ValueError:
-            return False
+            params_req = build_parameters_request(
+                block_size=self.block_size,
+                t1=self.t1,
+                t3=self.t3
+            )
+            attempt_timeout_s = (T_E_MS + TN_MS) / 1000.0
+            self._send_tpdu(PRIO_DT_CS_DC, self._tx_can_id, params_req)
+            start_time = time.time()
+            while time.time() - start_time < attempt_timeout_s:
+                frame = self._next_frame(timeout=0.05)
+                if frame is None:
+                    continue
+                can_id, data = frame
+                if can_id != self._rx_can_id:
+                    continue
+                try:
+                    block_size, t1, t2, t3, t4 = parse_parameters_response(data)
+                except ValueError:
+                    continue
+                if not BS_MIN <= block_size <= BS_MAX:
+                    self._disconnect_channel()
+                    raise TP20ChannelException(
+                        f"Remote block_size out of range {BS_MIN}..{BS_MAX} (TP2.0_1_1 §5.2)"
+                    )
+                try:
+                    _check_t1_gt_4_t3(t1, t3)
+                except ValueError as e:
+                    self._disconnect_channel()
+                    raise TP20ChannelException(
+                        "Remote parameters violate T1 > 4×T3 (TP2.0_1_1 §5.2)"
+                    ) from e
+                self._block_size = min(self.block_size, block_size)
+                self._t1 = t1
+                self._t3 = t3
+                self._reset_protocol_state_after_cs_ca()
+                return
+            self._disconnect_channel()
+            raise TP20TimeoutException("Parameter renegotiation timeout waiting for CA")
+        finally:
+            self._renegotiating = False
     
     def _send_segmented(self, payload: bytearray) -> None:
         """Send payload segmented into TP20 data frames."""
         if not self._channel_setup:
             raise TP20DisconnectedException("Channel not set up")
-        
-        # Enforce T3 delay since last send completed (inter-message timing)
-        if self._t3 is not None and self._last_send_complete_time > 0:
-            elapsed_since_last_send = time.time() - self._last_send_complete_time
-            t3_seconds = self._t3 / 1000.0  # T3 is in milliseconds
-            if elapsed_since_last_send < t3_seconds:
-                wait_time = t3_seconds - elapsed_since_last_send
-                logger.debug(f"TP20 SEND: waiting {wait_time*1000:.1f}ms for T3 inter-message delay")
-                time.sleep(wait_time)
-        
+        self._break_requested = False
         sequence = self._send_sequence
         offset = 0
         payload_len = len(payload)
         block_count = 0
-        
-        opcode_names = {
-            DATA_OP_WAIT_ACK_MORE: "WAIT_ACK_MORE",
-            DATA_OP_WAIT_ACK_LAST: "WAIT_ACK_LAST",
-            DATA_OP_NO_ACK_MORE: "NO_ACK_MORE",
-            DATA_OP_NO_ACK_LAST: "NO_ACK_LAST",
-        }
-        
-        logger.debug(f"TP20 SEND segmented: {payload_len} bytes, block_size={self._block_size}, T1={self._t1}ms, T3={self._t3}ms")
         
         while offset < payload_len:
             # Determine how much to send in this packet (max 7 bytes after opcode+seq)
@@ -839,18 +925,29 @@ class TP20Transport(Transport):
                 else:
                     opcode = DATA_OP_NO_ACK_MORE
             
-            # Build and send data frame
+            # Build and send data frame (§4.2.2 priority 4; T3 applied by sender thread)
             data_frame = build_data_frame(opcode, sequence, chunk)
-            logger.debug(f"TP20 TX: seq={sequence}, op={opcode_names.get(opcode, opcode)}, data={data_frame.hex()}")
-            self.can_connection.send_can_frame(self._tx_can_id, data_frame)
+            self._send_tpdu(PRIO_DT_CS_DC, self._tx_can_id, data_frame)
             
-            # Wait for ACK if needed
+            # Wait for ACK if needed; retry same DT on T1 timeout until RC_S > MNT (TP2.0_1_1 §6.3.1)
             if need_ack:
-                logger.debug(f"TP20 SEND: waiting for ACK (seq={sequence})")
-                self._wait_for_ack(sequence)
-                logger.debug(f"TP20 SEND: got ACK")
-                # Record time when ACK was received (for T3 enforcement)
-                self._last_send_complete_time = time.time()
+                while True:
+                    try:
+                        self._wait_for_ack(sequence)
+                        break
+                    except TP20AckRetryException:
+                        self._send_tpdu(PRIO_DT_CS_DC, self._tx_can_id, data_frame)
+            
+            # TP2.0_1_1 §6.3.4: if receiver sent BR, end with EOM and discard rest
+            if self._break_requested:
+                next_seq = (sequence + 1) & SEQ_MASK
+                eom_frame = build_data_frame(
+                    DATA_OP_WAIT_ACK_LAST, next_seq, b""
+                )
+                self._send_tpdu(PRIO_DT_CS_DC, self._tx_can_id, eom_frame)
+                self._send_sequence = next_seq
+                self._break_requested = False
+                return
             
             # Update for next packet
             offset += chunk_size
@@ -858,94 +955,93 @@ class TP20Transport(Transport):
             self._send_sequence = sequence  # Update global send sequence
             if need_ack:
                 block_count = 0
-            
-            # Wait T3 between packets within this message
-            if offset < payload_len and self._t3 is not None:
-                logger.debug(f"TP20 SEND: waiting T3={self._t3}ms between packets")
-                time.sleep(self._t3 / 1000.0)  # T3 is in milliseconds
-        
-        # Mark send complete time for inter-message T3 enforcement
-        self._last_send_complete_time = time.time()
-        logger.debug(f"TP20 SEND segmented complete")
     
     def _wait_for_ack(self, sequence: int) -> None:
-        """Wait for ACK for given sequence number using T1 timeout."""
+        """Wait for ACK for given sequence number. Uses T1 + TN per TP2.0_1_1."""
+        try:
+            ack_timeout_s = (TimingParameter.decode(self._t1) + TN_MS) / 1000.0 if self._t1 is not None else self.timeout
+        except (ValueError, TypeError):
+            ack_timeout_s = self.timeout
         start_time = time.time()
         frames_received = []
-        
-        # Use T1 as ACK timeout if negotiated, otherwise fall back to generic timeout
-        ack_timeout = self._t1 / 1000.0 if self._t1 is not None else self.timeout
-        expected_ack_seq = (sequence + 1) & SEQ_MASK
-        
-        logger.debug(f"TP20 ACK: waiting for ACK seq={expected_ack_seq} (sent seq={sequence}), timeout={ack_timeout:.3f}s")
-        
-        while time.time() - start_time < ack_timeout:
+
+        while time.time() - start_time < ack_timeout_s:
             frame = self._next_frame(timeout=0.1)
             if frame is None:
                 continue
             
             can_id, data = frame
-            
+
+            if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST and (can_id == self._rx_can_id or can_id == self._tx_can_id):
+                self._last_ct_received = time.time()
+                self._rc_ct = 0
+                self._send_tpdu(
+                    PRIO_CA_CT, self._tx_can_id, build_channel_test(), wait_sent=False
+                )
+                continue
             if can_id != self._rx_can_id:
-                #logger.debug(f"TP20 ACK: ignoring frame on CAN ID 0x{can_id:03X} (expected 0x{self._rx_can_id:03X}), data: {data.hex()}")
+                import logging
+                logger = logging.getLogger()
+                logger.debug(f"Received frame on unexpected CAN ID: 0x{can_id:03X} (expected 0x{self._rx_can_id:03X}), data: {data.hex()}")
                 continue
-            if len(data) == 1 and data[0] == OPCODE_CHANNEL_TEST:
-                # Ignore keep-alive echoes
-                continue
-            
+            if len(data) == 1 and data[0] == OPCODE_BREAK:
+                # TP2.0_1_1 §6.3.4: receiver requested break; sender must end with EOM
+                self._break_requested = True
+                return
             frames_received.append((can_id, data))
-            logger.debug(f"TP20 ACK: received {self._format_frame(can_id, data)}")
-            
-            # Check for disconnect
-            if len(data) == 1 and data[0] == 0xA8:
-                logger.debug("TP20 ACK: received disconnect (A8)")
-                raise TP20DisconnectedException("Received A8")
-            
-            # Check for parameters update from ECU (0xA1 opcode)
-            if self._handle_parameters_update(data):
-                # Parameters were updated, continue waiting for ACK
-                continue
-            
             try:
+                if len(data) == 1 and data[0] == 0xA8:
+                    raise TP20DisconnectedException("Received A8")
+
                 opcode, seq, _ = parse_data_frame(data)
                 # ACK sequence number is the NEXT sequence number (sequence + 1)
                 # So if we sent sequence 0, we expect ACK with sequence 1
-                if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY):
-                    if seq == expected_ack_seq:
-                        if opcode == DATA_OP_ACK_NOT_READY:
-                            logger.debug(f"TP20 ACK: receiver not ready, waiting...")
-                            time.sleep(0.01)
-                            continue
-                        logger.debug(f"TP20 ACK: got ACK READY seq={seq}")
-                        return
-                    else:
-                        logger.debug(f"TP20 ACK: seq mismatch (got {seq}, expected {expected_ack_seq})")
-            except ValueError as e:
-                logger.debug(f"TP20 ACK: failed to parse frame: {e}")
+                expected_ack_seq = (sequence + 1) & SEQ_MASK
+                if opcode in (DATA_OP_ACK_READY, DATA_OP_ACK_NOT_READY) and seq == expected_ack_seq:
+                    if opcode == DATA_OP_ACK_NOT_READY:
+                        # TP2.0_1_1 §6.3.2: T_Wait, BEC++; close if BEC > MNTB
+                        self._bec += 1
+                        if self._bec > MNTB:
+                            self._disconnect_channel()
+                            raise TP20ChannelException(
+                                "RNR count exceeded MNTB (BEC); channel closed"
+                            )
+                        time.sleep(T_WAIT_MS / 1000.0)
+                        continue
+                    self._rc_s = 0  # TP2.0_1_1: reset on successful ACK
+                    self._bec = 0  # §6.3.2: reset on RR
+                    return
+            except ValueError:
                 continue
         
-        # Log what we received before timeout
-        elapsed = time.time() - start_time
+        # T1 timeout (TP2.0_1_1 §6.3.1): resend last DT or close if RC_S > MNT
+        import logging
+        logger = logging.getLogger()
         formatted_frames = "\n".join(
             self._format_frame(cid, fdata) for cid, fdata in frames_received
         ) or "<none>"
-        logger.error(
-            "Timeout waiting for ACK sequence %s after %.3fs. Expected CAN ID: 0x%03X. "
+        logger.warning(
+            "Timeout waiting for ACK sequence %s. Expected CAN ID: 0x%03X. "
             "Received frames:\n%s",
             sequence,
-            elapsed,
             self._rx_can_id,
             formatted_frames,
         )
-        raise TP20TimeoutException(f"Timeout waiting for ACK for sequence {sequence}")
+        self._rc_s += 1
+        if self._rc_s > MNT:
+            self._disconnect_channel()
+            raise TP20ChannelException(
+                f"ACK timeout count exceeded MNT ({MNT}); channel closed"
+            )
+        raise TP20AckRetryException("ACK timeout; retry sending last DT")
     
     def _disconnect_channel(self) -> None:
         """Disconnect TP20 channel."""
         if not self._channel_setup:
             return
-        
+
         disconnect_frame = build_disconnect()
-        self.can_connection.send_can_frame(self._tx_can_id, disconnect_frame)
+        self._send_tpdu(PRIO_DT_CS_DC, self._tx_can_id, disconnect_frame)
         
         # Wait for disconnect response (optional, but good practice)
         start_time = time.time()
