@@ -39,7 +39,8 @@ class ComportTransport(Transport):
             bytesize: int = serial.EIGHTBITS,
             parity: str = serial.PARITY_NONE,
             stopbits: float = serial.STOPBITS_TWO,
-            logger: Optional[logging.Logger] = None
+            logger: Optional[logging.Logger] = None,
+            clear_input_before_send: bool = True
     ):
         """
         Initialize COM port transport.
@@ -52,6 +53,11 @@ class ComportTransport(Transport):
             parity: Parity setting (default: NONE)
             stopbits: Number of stop bits (default: 1)
             logger: Optional logger instance (default: root logger)
+            clear_input_before_send: Discard bytes already waiting in the input
+                buffer before each send (default: True). In a request/response
+                protocol anything received before the request is stale: a late
+                answer to an earlier, timed-out request would otherwise be read
+                as the answer to this one.
         """
         self.port = port
         self.baudrate = baudrate
@@ -61,6 +67,7 @@ class ComportTransport(Transport):
         self.stopbits = stopbits
         self.logger = logger if logger is not None else logging.getLogger(__name__)
 
+        self.clear_input_before_send = clear_input_before_send
         self._serial: Optional[serial.Serial] = None
         self._is_open = False
 
@@ -117,9 +124,11 @@ class ComportTransport(Transport):
             raise TransportException("Transport not open")
 
         try:
+            if self.clear_input_before_send:
+                # Before the write, not after: send() reads back its own echo below.
+                self._serial.reset_input_buffer()
             bytes_written = self._serial.write(data)
             self._serial.flush()  # Ensure data is sent immediately
-            # self._serial.reset_input_buffer()
             self._serial.read(len(data))
             self.logger.info(f"Sent {bytes_written} bytes: {data.hex()}")
 

@@ -36,7 +36,8 @@ class Kwp2000StarDcan(Transport):
             source: int = 0xF1,
             bytesize: int = serial.EIGHTBITS,
             parity: str = serial.PARITY_NONE,
-            stopbits: float = serial.STOPBITS_TWO
+            stopbits: float = serial.STOPBITS_TWO,
+            clear_input_before_send: bool = True
     ):
         """
         Initialize the KWP2000-STAR DCAN adapter.
@@ -50,6 +51,8 @@ class Kwp2000StarDcan(Transport):
             bytesize: Number of data bits (default: 8)
             parity: Parity setting (default: NONE)
             stopbits: Number of stop bits (default: 2)
+            clear_input_before_send: Discard stale received bytes before each
+                request (default: True), see ComportTransport
         """
         self.port = port
         self.baudrate = baudrate
@@ -66,7 +69,8 @@ class Kwp2000StarDcan(Transport):
             bytesize=bytesize,
             parity=parity,
             stopbits=stopbits,
-            logger=self.logger
+            logger=self.logger,
+            clear_input_before_send=clear_input_before_send
         )
 
     def open(self) -> None:
@@ -85,14 +89,11 @@ class Kwp2000StarDcan(Transport):
     def close(self) -> None:
         """
         Close the serial port connection.
-        
-        Raises:
-            NotImplementedError: This is a stub implementation
         """
         if not self._is_open:
             return
-        # Stub implementation
         self._is_open = False
+        self._comport_transport.close()
 
     def _build_send_frame_short(self, data: bytes) -> bytearray:
         """
