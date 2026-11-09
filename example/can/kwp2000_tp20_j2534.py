@@ -16,7 +16,7 @@ if __name__ == "__main__":
     # Initialize and connect to ECU
     with KWP2000_TP20_J2534() as client:
         # Start extended diagnostic session
-        #response = client.startDiagnosticSession(session_type=0x89)
+        #response = client.start_diagnostic_session(session_type=0x89)
         #print(f"Session started: {response}")
 
         while(True):

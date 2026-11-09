@@ -69,7 +69,7 @@ if __name__ == "__main__":
             # Uncomment to test periodic reading:
             # print("\nStarting periodic memory read (slow mode)...")
             # while True:
-            #     result = client.readMemoryByAddress(
+            #     result = client.read_memory_by_address(
             #         memory_address=mem_addr,
             #         memory_size=16,
             #         transmission_mode=services.ReadMemoryByAddress.TransmissionMode.slow,

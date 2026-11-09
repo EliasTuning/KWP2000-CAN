@@ -66,7 +66,7 @@ def test_disconnect_diagnostic_session_and_read_data():
         with kwp2000_client:
             try:
             # Start diagnostic session (0x10 0x89)
-                session_response = kwp2000_client.startDiagnosticSession(session_type=0x89)
+                session_response = kwp2000_client.start_diagnostic_session(session_type=0x89)
             except Exception as e:
                 assert isinstance(e,TP20DisconnectedException),"ExceptionType wrong!"
 

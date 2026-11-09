@@ -54,8 +54,7 @@ def test_ident():
         # For ident: address=MOTRONIC (0x12), payload=[0x04, 0x00]
         request_frame = build_frame(MOTRONIC, bytes([0x04, 0x00]))
         
-        # Queue echo frame (same as request)
-        transport.queue_response(request_frame)
+        # No echo frame: ComportTransport.send() consumes the K-line echo, so the client reads only the response
         
         # Queue response frame: STATUS_OKAY + identification data
         # Response payload: STATUS_OKAY (0xA0) + data bytes
@@ -73,6 +72,7 @@ def test_ident():
         assert isinstance(result['data'], bytes), "Identification data should be bytes"
         assert len(result['data']) > 0, "Identification data should not be empty"
         assert result['data'] == ident_data, f"Expected ident data {ident_data.hex()}, got {result['data'].hex()}"
+        assert transport._sent_frames == [request_frame], "Client should send the ident request frame"
         
         print(f"ECU identification data: {result['data'].hex(' ').upper()}")
         print("Ident test completed successfully!")
@@ -102,23 +102,15 @@ def test_read_memory():
             (memory_address >> 16) & 0xFF,  # Address high byte
             (memory_address >> 8) & 0xFF,   # Address middle byte
             memory_address & 0xFF,           # Address low byte
-            memory_size
+            memory_size // 2                 # size field counts 16-bit words (DS2Client.read_memory halves it)
         ])
         request_frame = build_frame(MOTRONIC, request_payload)
         
-        # Queue echo frame (same as request)
-        transport.queue_response(request_frame)
+        # No echo frame: ComportTransport.send() consumes the K-line echo, so the client reads only the response
         
-        # Queue response frame: STATUS_OKAY + memory_type_echo + address_echo + size_echo + memory_data
+        # Queue response frame: STATUS_OKAY + memory_data (the ECU does not echo type/address/size)
         memory_data = bytes([0xAA, 0xBB, 0xCC, 0xDD])  # Example memory data
-        response_payload = bytes([
-            STATUS_OKAY,
-            memory_type,  # memory_type_echo
-            (memory_address >> 16) & 0xFF,  # address_echo high
-            (memory_address >> 8) & 0xFF,   # address_echo middle
-            memory_address & 0xFF,           # address_echo low
-            memory_size  # size_echo
-        ]) + memory_data
+        response_payload = bytes([STATUS_OKAY]) + memory_data
         response_frame = build_frame(MOTRONIC, response_payload)
         transport.queue_response(response_frame)
         
@@ -136,13 +128,8 @@ def test_read_memory():
         assert isinstance(result.memory_data, bytes), "Memory data should be bytes"
         assert len(result.memory_data) == memory_size, f"Expected {memory_size} bytes, got {len(result.memory_data)}"
         assert result.memory_data == memory_data, f"Expected memory data {memory_data.hex()}, got {result.memory_data.hex()}"
-        assert result.memory_type_echo == memory_type, f"Expected memory type echo {memory_type:02X}, got {result.memory_type_echo:02X}"
-        assert result.address_echo == memory_address, f"Expected address echo 0x{memory_address:08X}, got 0x{result.address_echo:08X}"
-        assert result.size_echo == memory_size, f"Expected size echo {memory_size}, got {result.size_echo}"
+        assert transport._sent_frames == [request_frame], "Client should send the read-memory request frame"
         
-        print(f"Memory address echo: 0x{result.address_echo:08X}")
-        print(f"Memory type echo: 0x{result.memory_type_echo:02X}")
-        print(f"Size echo: {result.size_echo}")
         print(f"Memory data ({len(result.memory_data)} bytes): {result.memory_data.hex(' ').upper()}")
         print("Read memory test completed successfully!")
 
