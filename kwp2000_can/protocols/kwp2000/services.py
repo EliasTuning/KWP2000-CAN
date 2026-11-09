@@ -609,11 +609,12 @@ class StartDiagnosticSession(ServiceBase):
         if not response.is_positive():
             raise ValueError("Response is not positive")
         
-        # Validate response service ID (should be 0x50 = SDSPR)
-        if response.service != cls.POSITIVE_RESPONSE_SERVICE_ID:
+        # Validate the response belongs to this service. Response.from_payload() stores a positive response's
+        # REQUEST service ID (0x50 SDSPR - 0x40 = 0x10), so compare with SERVICE_ID, not with 0x50.
+        if response.service != cls.SERVICE_ID:
             raise ValueError(
                 f"Invalid positive response service ID: expected 0x{cls.POSITIVE_RESPONSE_SERVICE_ID:02X} (SDSPR), "
-                f"got 0x{response.service:02X}"
+                f"got 0x{response.service + 0x40:02X}"
             )
         
         # Positive response must have at least 1 byte (diagnosticMode echo)

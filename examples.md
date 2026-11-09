@@ -110,11 +110,11 @@ from kwp2000_can.protocols.kwp2000 import KWP2000Client
 
 with KWP2000Client(transport) as client:
     # Start OBD2 diagnostic session
-    response = client.startDiagnosticSession(diagnostic_mode=0x81)
+    response = client.start_diagnostic_session(diagnostic_mode=0x81)
     print(f"Session started: {response}")
     
     # With baudrate negotiation (for serial)
-    response = client.startDiagnosticSession(
+    response = client.start_diagnostic_session(
         diagnostic_mode=0x81,
         baudrate_identifier=0x05  # 115200 baud
     )
@@ -125,7 +125,7 @@ with KWP2000Client(transport) as client:
 ```python
 with KWP2000Client(transport) as client:
     # Read memory by address
-    result = client.readMemoryByAddress(
+    result = client.read_memory_by_address(
         memory_address=0x5B9000,
         memory_size=16
     )

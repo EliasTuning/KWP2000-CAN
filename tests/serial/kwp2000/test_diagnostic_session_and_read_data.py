@@ -62,15 +62,14 @@ def test_diagnostic_session_and_read_data():
         session_response_payload = bytes([RESPONSE_POSITIVE + SERVICE_START_DIAGNOSTIC_SESSION]) + bytes([session_type])
         transport.queue_response(session_response_payload)
         
-        session_response = kwp2000_client.startDiagnosticSession(session_type=session_type)
+        session_response = kwp2000_client.start_diagnostic_session(session_type=session_type)
         
         # Assert session started successfully
         assert session_response is not None, "Session response should not be None"
-        assert 'session_type_echo' in session_response, "Session response should contain session_type_echo"
-        assert session_response.get('session_type_echo') == session_type, \
-            f"Expected session type echo 0x{session_type:02X}, got 0x{session_response.get('session_type_echo', 0):02X}"
+        assert session_response.diagnostic_mode == session_type, \
+            f"Expected diagnostic mode echo 0x{session_type:02X}, got 0x{session_response.diagnostic_mode:02X}"
         
-        print(f"Session started: session_type_echo=0x{session_response.get('session_type_echo'):02X}")
+        print(f"Session started: diagnostic_mode=0x{session_response.diagnostic_mode:02X}")
         
         # Read data by local identifier (0x21 0x01)
         local_identifier = 0x01
@@ -83,7 +82,7 @@ def test_diagnostic_session_and_read_data():
                                 bytes([local_identifier]) + read_data
         transport.queue_response(read_response_payload)
         
-        data_response = kwp2000_client.readDataByLocalIdentifier(local_identifier=local_identifier)
+        data_response = kwp2000_client.read_data_by_local_identifier(local_identifier=local_identifier)
         
         # Assert data read successfully
         assert data_response is not None, "Data response should not be None"

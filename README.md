@@ -30,7 +30,7 @@ pip install pyserial
 from kwp2000_can.protocols.kwp2000.can import KWP2000_TP20_J2534
 
 with KWP2000_TP20_J2534() as client:
-    data = client.readDataByLocalIdentifier(local_identifier=0x01)
+    data = client.read_data_by_local_identifier(local_identifier=0x01)
     print(data)
 ```
 

@@ -52,7 +52,7 @@ class MockComportTransport(Transport):
     
     def __init__(self):
         self._sent_frames = []
-        self._response_queue = []
+        self._rx = bytearray()       # the serial line: queued frames as one byte stream, like a real port
         self._is_open = False
         self.baudrate = 9600
     
@@ -60,7 +60,7 @@ class MockComportTransport(Transport):
         """Open the mock transport."""
         self._is_open = True
         self._sent_frames.clear()
-        self._response_queue.clear()
+        self._rx.clear()
     
     def close(self) -> None:
         """Close the mock transport."""
@@ -72,22 +72,25 @@ class MockComportTransport(Transport):
             raise TransportException("Transport not open")
         self._sent_frames.append(data)
     
-    def wait_frame(self, timeout: float = 1.0) -> Optional[bytes]:
+    def wait_frame(self, timeout: float = 1.0, max_bytes: int = 1024) -> Optional[bytes]:
         """
-        Return next STAR frame from response queue.
+        Return up to max_bytes from the received byte stream (like ComportTransport.wait_frame).
         
         Args:
             timeout: Ignored in mock, but kept for API compatibility
+            max_bytes: Maximum number of bytes to return
             
         Returns:
-            Next STAR frame from queue, or None if queue is empty
+            Up to max_bytes received bytes, or None if nothing is waiting
         """
         if not self._is_open:
             raise TransportException("Transport not open")
         
-        if self._response_queue:
-            return self._response_queue.pop(0)
-        return None
+        if not self._rx:
+            return None
+        data = bytes(self._rx[:max_bytes])
+        del self._rx[:max_bytes]
+        return data
     
     def queue_response(self, star_frame: bytes) -> None:
         """
@@ -96,7 +99,7 @@ class MockComportTransport(Transport):
         Args:
             star_frame: Complete STAR frame bytes (with framing)
         """
-        self._response_queue.append(star_frame)
+        self._rx += star_frame
     
     def get_sent_frames(self) -> list:
         """
@@ -161,13 +164,12 @@ def test_diagnostic_session():
         # 1. Send service_payload via transport.send()
         # 2. transport.send() wraps it in STAR frame and calls mock_comport.send()
         # 3. transport.wait_frame() calls mock_comport.wait_frame() and parses STAR frame
-        session_response = client.startDiagnosticSession(session_type=session_type)
+        session_response = client.start_diagnostic_session(session_type=session_type)
         
         # Assert session started successfully
         assert session_response is not None, "Session response should not be None"
-        assert 'session_type_echo' in session_response, "Session response should contain session_type_echo"
-        assert session_response.get('session_type_echo') == session_type, \
-            f"Expected session type echo 0x{session_type:02X}, got 0x{session_response.get('session_type_echo', 0):02X}"
+        assert session_response.diagnostic_mode == session_type, \
+            f"Expected diagnostic mode echo 0x{session_type:02X}, got 0x{session_response.diagnostic_mode:02X}"
         
         # Verify that a STAR frame was sent
         sent_frames = mock_comport.get_sent_frames()
@@ -179,7 +181,7 @@ def test_diagnostic_session():
         assert parsed_payload == service_payload, \
             f"Expected service payload {service_payload.hex()}, got {parsed_payload.hex()}"
         
-        print(f"Session started: session_type_echo=0x{session_response.get('session_type_echo'):02X}")
+        print(f"Session started: diagnostic_mode=0x{session_response.diagnostic_mode:02X}")
         print(f"Sent STAR frame: {sent_star_frame.hex(' ').upper()}")
         print(f"Parsed payload from sent frame: {parsed_payload.hex(' ').upper()}")
         print("Test completed successfully!")
